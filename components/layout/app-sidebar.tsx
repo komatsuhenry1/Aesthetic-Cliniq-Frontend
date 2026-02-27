@@ -37,7 +37,7 @@ const navigationItems: NavigationItem[] = [
   { label: "Agenda", href: "/agenda", icon: CalendarClock },
   { label: "Clientes", href: "/clientes", icon: Users },
   { label: "Procedimentos", href: "/procedimentos", icon: ClipboardList },
-  { label: "Pacotes", href: "/pacotes", icon: Package2 },
+  { label: "Estoque", href: "/estoque", icon: Package2 },
   { label: "Financeiro", href: "/financeiro", icon: CreditCard },
   { label: "Configurações", href: "/configuracoes", icon: Cog },
 ];

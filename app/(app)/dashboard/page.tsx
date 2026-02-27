@@ -2,7 +2,7 @@ const cards = [
   { title: "Receita Mensal", value: "R$ 42.850,00", trend: "+12.5%" },
   { title: "Agendamentos", value: "1.240", trend: "+4.2%" },
   { title: "Novos Clientes", value: "48", trend: "+18%" },
-  { title: "Pacote Mais Vendido", value: "Botox Elite ", trend: "Top Sales" },
+  { title: "Agendamentos Hoje", value: "10", trend: "+10%" },
 ];
 
 const appointments = [
@@ -16,7 +16,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <section>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-          Dashboard Overview
+          Dashboard
         </h1>
         <p className="mt-1 text-sm text-slate-500 sm:text-base">
           Welcome back. Here&apos;s what&apos;s happening with your clinic today.
@@ -34,9 +34,6 @@ export default function DashboardPage() {
           </article>
         ))}
       </section>
-
-    
-
       <section className="rounded-2xl border border-slate-200 bg-white p-5">
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-slate-800">Próximos Agendamentos</h2>

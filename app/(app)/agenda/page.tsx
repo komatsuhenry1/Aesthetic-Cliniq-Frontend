@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  CalendarDays,
   CalendarIcon,
   ChevronLeft,
   ChevronRight,
@@ -12,10 +11,11 @@ import {
   UserIcon,
   X,
   ChartNoAxesColumn,
+  CoinsIcon,
 } from "lucide-react";
 import { StatusNotification } from "@/components/status-notification";
 
-type AppointmentStatus = "confirmado" | "pendente" | "em-andamento" | "bloqueio";
+type AppointmentStatus = "confirmado" | "pendente" | "em-andamento" | "concluido" | "bloqueio";
 type Appointment = {
   id: string;
   date: string;
@@ -23,6 +23,7 @@ type Appointment = {
   endTime: string;
   patient: string;
   procedure: string;
+  procedureValue?: string;
   professional: string;
   status: AppointmentStatus;
   badge?: string;
@@ -36,6 +37,7 @@ type WeeklyEvent = {
   title: string;
   patient: string;
   professional: string;
+  procedureValue?: string;
   status: AppointmentStatus;
   appointmentId?: string;
   canEditStatus?: boolean;
@@ -51,6 +53,7 @@ type AppointmentDetails = {
   endTime: string;
   patient: string;
   procedure: string;
+  procedureValue?: string;
   professional: string;
   status: AppointmentStatus;
   canEditStatus: boolean;
@@ -61,9 +64,27 @@ type NewAppointmentForm = {
   endTime: string;
   patient: string;
   procedure: string;
+  procedureValue: string;
   professional: string;
   status: AppointmentStatus;
   notes: string;
+};
+type EditAppointmentForm = {
+  date: string;
+  startTime: string;
+  endTime: string;
+  patient: string;
+  procedure: string;
+  procedureValue: string;
+  professional: string;
+};
+type DetailsTab = "status" | "estoque";
+type StockProduct = {
+  id: string;
+  name: string;
+  unit: string;
+  quantity: number;
+  icon: string;
 };
 type StatusNotification = {
   title: string;
@@ -184,16 +205,18 @@ const timeSlots = Array.from({ length: 24 }, (_, hour) => `${String(hour).padSta
 const HOUR_ROW_HEIGHT = 80;
 const WEEK_START_HOUR = 0;
 const WEEK_END_HOUR = 24;
-const WEEK_ROW_HEIGHT = 74;
+const WEEK_ROW_HEIGHT = 140;
 const weekTimeSlots = Array.from(
   { length: WEEK_END_HOUR - WEEK_START_HOUR },
   (_, index) => `${String(WEEK_START_HOUR + index).padStart(2, "0")}:00`
 );
 const weekDayLabels = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"];
+const monthDayLabels = ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB"];
 const appointmentStatusOptions: AppointmentStatus[] = [
   "confirmado",
   "pendente",
   "em-andamento",
+  "concluido",
   "bloqueio",
 ];
 const professionalOptions = ["Dra. Ana Paula", "Dr. Ricardo", "Dra. Valeria", "Dra. Paula"];
@@ -203,6 +226,11 @@ const procedureOptions = [
   "Peeling",
   "Preenchimento Labial",
   "Avaliação Geral",
+];
+const initialStockProducts: StockProduct[] = [
+  { id: "luvas-descartaveis", name: "Luvas descartáveis", unit: "unidades", quantity: 150, icon: "🧤" },
+  { id: "mascaras-descartaveis", name: "Máscaras descartáveis", unit: "unidades", quantity: 352, icon: "😷" },
+  { id: "seringas-descartaveis", name: "Seringas descartáveis", unit: "unidades", quantity: 14, icon: "💉" },
 ];
 const weeklyEvents: WeeklyEvent[] = [
   {
@@ -272,18 +300,22 @@ const weeklyEvents: WeeklyEvent[] = [
 
 function appointmentStyles(status: Appointment["status"]) {
   if (status === "confirmado") {
-    return "border-slate-200 border-l-4 border-l-emerald-500 bg-emerald-100 text-emerald-900";
+    return "border-emerald-300 border-l-4 border-l-emerald-600 bg-emerald-200 text-emerald-950 shadow-sm";
   }
 
   if (status === "pendente") {
-    return "border-slate-200 border-l-4 border-l-amber-500 bg-amber-100 text-amber-900";
+    return "border-amber-300 border-l-4 border-l-amber-600 bg-amber-200 text-amber-950 shadow-sm";
   }
 
   if (status === "em-andamento") {
-    return "border-slate-200 border-l-4 border-l-indigo-500 bg-indigo-100 text-indigo-900";
+    return "border-indigo-300 border-l-4 border-l-indigo-600 bg-indigo-200 text-indigo-950 shadow-sm";
   }
 
-  return "border-slate-200 border-l-4 border-l-slate-400 bg-slate-100 text-slate-700 italic";
+  if (status === "concluido") {
+    return "border-cyan-300 border-l-4 border-l-cyan-600 bg-cyan-200 text-cyan-950 shadow-sm";
+  }
+
+  return "border-slate-300 border-l-4 border-l-slate-600 bg-slate-200 text-slate-900 italic shadow-sm";
 }
 
 function addDays(date: Date, days: number) {
@@ -305,6 +337,14 @@ function getStartOfWeek(date: Date) {
   newDate.setDate(newDate.getDate() + diff);
   newDate.setHours(0, 0, 0, 0);
   return newDate;
+}
+
+function getStartOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function getEndOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0);
 }
 
 function parseTimeToMinutes(time: string) {
@@ -403,18 +443,22 @@ function computeDayEventLayout(events: WeeklyEvent[]): WeeklyEventLayout[] {
 
 function weekEventStyles(status: WeeklyEvent["status"]) {
   if (status === "confirmado") {
-    return "border-slate-200 border-l-4 border-l-emerald-500 bg-emerald-100 text-emerald-900";
+    return "border-emerald-300 border-l-4 border-l-emerald-600 bg-emerald-200 text-emerald-950 shadow-sm";
   }
 
   if (status === "pendente") {
-    return "border-slate-200 border-l-4 border-l-rose-500 bg-rose-100 text-rose-900";
+    return "border-rose-300 border-l-4 border-l-rose-600 bg-rose-200 text-rose-950 shadow-sm";
   }
 
   if (status === "em-andamento") {
-    return "border-slate-200 border-l-4 border-l-indigo-500 bg-indigo-100 text-indigo-900";
+    return "border-indigo-300 border-l-4 border-l-indigo-600 bg-indigo-200 text-indigo-950 shadow-sm";
   }
 
-  return "border-slate-200 border-l-4 border-l-slate-400 bg-slate-100 text-slate-600";
+  if (status === "concluido") {
+    return "border-cyan-300 border-l-4 border-l-cyan-600 bg-cyan-200 text-cyan-950 shadow-sm";
+  }
+
+  return "border-slate-300 border-l-4 border-l-slate-600 bg-slate-200 text-slate-900 shadow-sm";
 }
 
 function viewModeButtonStyles(currentMode: ViewMode, buttonMode: ViewMode) {
@@ -438,6 +482,10 @@ function statusLabel(status: AppointmentStatus) {
     return "Em andamento";
   }
 
+  if (status === "concluido") {
+    return "Concluído";
+  }
+
   return "Bloqueio";
 }
 
@@ -454,11 +502,45 @@ function statusDotColor(status: AppointmentStatus) {
     return "bg-indigo-500";
   }
 
+  if (status === "concluido") {
+    return "bg-cyan-500";
+  }
+
   return "bg-slate-400";
+}
+
+function statusOptionButtonStyles(status: AppointmentStatus, currentStatus: AppointmentStatus) {
+  if (status === currentStatus) {
+    return "border-transparent bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200";
+  }
+
+  return "border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:bg-indigo-50/50 hover:text-indigo-700";
 }
 
 function createAppointmentId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeProfessionalName(professional: string) {
+  return professional.trim() || "Sem profissional";
+}
+
+function parseCurrencyToCents(value: string) {
+  const onlyDigits = value.replace(/\D/g, "");
+  return onlyDigits ? Number(onlyDigits) : 0;
+}
+
+function formatCurrencyInput(value: string) {
+  const cents = parseCurrencyToCents(value);
+
+  if (cents <= 0) {
+    return "";
+  }
+
+  return (cents / 100).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
 }
 
 export default function AgendaPage() {
@@ -473,24 +555,119 @@ export default function AgendaPage() {
   );
   const [selectedAppointmentDetails, setSelectedAppointmentDetails] = useState<AppointmentDetails | null>(null);
   const [editableStatus, setEditableStatus] = useState<AppointmentStatus>("confirmado");
+  const [detailsTab, setDetailsTab] = useState<DetailsTab>("status");
+  const [isEditingAppointment, setIsEditingAppointment] = useState(false);
+  const [editAppointmentError, setEditAppointmentError] = useState("");
+  const [editAppointment, setEditAppointment] = useState<EditAppointmentForm>({
+    date: "",
+    startTime: "",
+    endTime: "",
+    patient: "",
+    procedure: "",
+    procedureValue: "",
+    professional: "",
+  });
+  const [stockProducts, setStockProducts] = useState<StockProduct[]>(initialStockProducts);
+  const [appointmentStockUsage, setAppointmentStockUsage] = useState<Record<string, Record<string, number>>>(
+    {}
+  );
+  const [stockDraftByProductId, setStockDraftByProductId] = useState<Record<string, string>>({});
+  const [stockControlError, setStockControlError] = useState("");
   const [statusNotification, setStatusNotification] = useState<StatusNotification | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isProfessionalFilterOpen, setIsProfessionalFilterOpen] = useState(false);
+  const [selectedProfessionals, setSelectedProfessionals] = useState<string[]>([]);
   const [newAppointment, setNewAppointment] = useState<NewAppointmentForm>(() => ({
-    date: toDateKey(new Date()),
-    startTime: "09:00",
-    endTime: "10:00",
+    date: "",
+    startTime: "",
+    endTime: "",
     patient: "",
-    procedure: "Limpeza de Pele",
-    professional: "Dra. Ana Paula",
+    procedure: "",
+    procedureValue: "",
+    professional: "",
     status: "confirmado",
     notes: "",
   }));
   const [createAppointmentError, setCreateAppointmentError] = useState("");
   const scheduleScrollRef = useRef<HTMLDivElement | null>(null);
   const weekScheduleScrollRef = useRef<HTMLDivElement | null>(null);
+  const professionalsFilterRef = useRef<HTMLDivElement | null>(null);
+  const availableProfessionals = useMemo(() => {
+    const professionals = new Set<string>();
+
+    appointmentList.forEach((appointment) => {
+      professionals.add(normalizeProfessionalName(appointment.professional));
+    });
+
+    weeklyEvents.forEach((event) => {
+      professionals.add(normalizeProfessionalName(event.professional));
+    });
+
+    return Array.from(professionals).sort((first, second) => first.localeCompare(second, "pt-BR"));
+  }, [appointmentList]);
+  const filteredAppointmentList = useMemo(
+    () =>
+      appointmentList.filter((appointment) => {
+        if (selectedProfessionals.length === 0) {
+          return true;
+        }
+
+        return selectedProfessionals.includes(normalizeProfessionalName(appointment.professional));
+      }),
+    [appointmentList, selectedProfessionals]
+  );
+  const filteredWeeklyBaseEvents = useMemo(
+    () =>
+      weeklyEvents.filter((event) => {
+        if (selectedProfessionals.length === 0) {
+          return true;
+        }
+
+        return selectedProfessionals.includes(normalizeProfessionalName(event.professional));
+      }),
+    [selectedProfessionals]
+  );
   const selectedDateKey = useMemo(() => toDateKey(selectedDate), [selectedDate]);
+  const todayKey = useMemo(() => toDateKey(new Date()), []);
   const weekStartDate = useMemo(() => getStartOfWeek(selectedDate), [selectedDate]);
   const weekEndDate = useMemo(() => addDays(weekStartDate, 6), [weekStartDate]);
+  const monthStartDate = useMemo(() => getStartOfMonth(selectedDate), [selectedDate]);
+  const monthEndDate = useMemo(() => getEndOfMonth(selectedDate), [selectedDate]);
+  const monthGridDays = useMemo(() => {
+    const firstGridDay = addDays(monthStartDate, -monthStartDate.getDay());
+    const lastGridDay = addDays(monthEndDate, 6 - monthEndDate.getDay());
+    const days: Date[] = [];
+
+    for (
+      let cursorDate = new Date(firstGridDay);
+      cursorDate <= lastGridDay;
+      cursorDate = addDays(cursorDate, 1)
+    ) {
+      days.push(new Date(cursorDate));
+    }
+
+    return days;
+  }, [monthStartDate, monthEndDate]);
+  const monthlyAppointmentsByDate = useMemo(() => {
+    return filteredAppointmentList.reduce<Record<string, Appointment[]>>((accumulator, appointment) => {
+      if (!accumulator[appointment.date]) {
+        accumulator[appointment.date] = [];
+      }
+      accumulator[appointment.date].push(appointment);
+      return accumulator;
+    }, {});
+  }, [filteredAppointmentList]);
+  const selectedMonthAppointments = useMemo(
+    () =>
+      filteredAppointmentList.filter((appointment) => {
+        const appointmentDate = new Date(`${appointment.date}T00:00:00`);
+        return (
+          appointmentDate.getFullYear() === monthStartDate.getFullYear() &&
+          appointmentDate.getMonth() === monthStartDate.getMonth()
+        );
+      }),
+    [filteredAppointmentList, monthStartDate]
+  );
   const weekDays = useMemo(
     () => Array.from({ length: 7 }, (_, index) => addDays(weekStartDate, index)),
     [weekStartDate]
@@ -519,12 +696,12 @@ export default function AgendaPage() {
   }, [selectedDate]);
 
   const selectedDateAppointments = useMemo(
-    () => appointmentList.filter((appointment) => appointment.date === selectedDateKey),
-    [appointmentList, selectedDateKey]
+    () => filteredAppointmentList.filter((appointment) => appointment.date === selectedDateKey),
+    [filteredAppointmentList, selectedDateKey]
   );
   const selectedWeekAppointments = useMemo(
     () =>
-      appointmentList
+      filteredAppointmentList
         .map((appointment): WeeklyEvent | null => {
           const date = new Date(`${appointment.date}T00:00:00`);
           const dayDifference = Math.floor(
@@ -541,18 +718,19 @@ export default function AgendaPage() {
             endTime: appointment.endTime,
             title: appointment.procedure,
             patient: appointment.patient,
-            professional: appointment.professional || "Sem profissional",
+            professional: normalizeProfessionalName(appointment.professional),
+            procedureValue: appointment.procedureValue,
             status: appointment.status,
             appointmentId: appointment.id,
             canEditStatus: true,
           };
         })
         .filter((event): event is WeeklyEvent => event !== null),
-    [appointmentList, weekStartDate]
+    [filteredAppointmentList, weekStartDate]
   );
   const selectedWeekEvents = useMemo(
-    () => [...weeklyEvents, ...selectedWeekAppointments],
-    [selectedWeekAppointments]
+    () => [...filteredWeeklyBaseEvents, ...selectedWeekAppointments],
+    [filteredWeeklyBaseEvents, selectedWeekAppointments]
   );
   const selectedWeekEventsByDay = useMemo(
     () =>
@@ -626,14 +804,26 @@ export default function AgendaPage() {
     }
 
     if (viewMode === "month") {
-      return "Visão mensal em desenvolvimento";
+      return `${selectedMonthAppointments.length} agendamento(s) neste mês`;
     }
 
     return `${selectedDateAppointments.length} agendamento(s) para este dia`;
-  }, [viewMode, selectedWeekEvents.length, selectedDateAppointments.length]);
+  }, [viewMode, selectedWeekEvents.length, selectedDateAppointments.length, selectedMonthAppointments.length]);
 
   const disableTodayButton =
     viewMode === "day" ? isSelectedDateToday : viewMode === "week" ? isSelectedWeekCurrent : false;
+  const selectedAppointmentStockUsage = useMemo(() => {
+    if (!selectedAppointmentDetails?.appointmentId) {
+      return {};
+    }
+
+    return appointmentStockUsage[selectedAppointmentDetails.appointmentId] ?? {};
+  }, [appointmentStockUsage, selectedAppointmentDetails?.appointmentId]);
+  const selectedStockItemsCount = useMemo(
+    () =>
+      Object.values(stockDraftByProductId).filter((quantity) => Number(quantity) > 0).length,
+    [stockDraftByProductId]
+  );
 
   function handlePreviousPeriod() {
     setSelectedDate((currentDate) => {
@@ -665,12 +855,13 @@ export default function AgendaPage() {
 
   function openCreateAppointmentModal() {
     setNewAppointment({
-      date: selectedDateKey,
-      startTime: "09:00",
-      endTime: "10:00",
+      date: "",
+      startTime: "",
+      endTime: "",
       patient: "",
-      procedure: "Limpeza de Pele",
-      professional: "Dra. Ana Paula",
+      procedure: "",
+      procedureValue: "",
+      professional: "",
       status: "confirmado",
       notes: "",
     });
@@ -681,6 +872,11 @@ export default function AgendaPage() {
   function handleCreateAppointment() {
     if (!newAppointment.patient.trim() || !newAppointment.procedure.trim()) {
       setCreateAppointmentError("Preencha paciente e procedimento.");
+      return;
+    }
+
+    if (parseCurrencyToCents(newAppointment.procedureValue) <= 0) {
+      setCreateAppointmentError("Informe um valor válido para o procedimento.");
       return;
     }
 
@@ -698,6 +894,7 @@ export default function AgendaPage() {
         endTime: newAppointment.endTime,
         patient: newAppointment.patient.trim(),
         procedure: newAppointment.procedure.trim(),
+        procedureValue: newAppointment.procedureValue,
         professional: newAppointment.professional.trim(),
         status: newAppointment.status,
       },
@@ -706,13 +903,195 @@ export default function AgendaPage() {
   }
 
   function openAppointmentDetails(details: AppointmentDetails) {
+    const savedUsage = details.appointmentId ? appointmentStockUsage[details.appointmentId] : undefined;
+
     setSelectedAppointmentDetails(details);
     setEditableStatus(details.status);
+    setDetailsTab("status");
+    setIsEditingAppointment(false);
+    setEditAppointmentError("");
+    setStockControlError("");
+    setStockDraftByProductId(
+      savedUsage
+        ? Object.fromEntries(
+            Object.entries(savedUsage).map(([productId, quantity]) => [productId, String(quantity)])
+          )
+        : {}
+    );
+    setEditAppointment({
+      date: details.date,
+      startTime: details.startTime,
+      endTime: details.endTime,
+      patient: details.patient,
+      procedure: details.procedure,
+      procedureValue: details.procedureValue || "",
+      professional: details.professional,
+    });
+  }
+
+  function handleOpenEditAppointment() {
+    if (!selectedAppointmentDetails?.appointmentId || !selectedAppointmentDetails.canEditStatus) {
+      return;
+    }
+
+    setIsEditingAppointment(true);
+    setEditAppointmentError("");
+    setEditAppointment({
+      date: selectedAppointmentDetails.date,
+      startTime: selectedAppointmentDetails.startTime,
+      endTime: selectedAppointmentDetails.endTime,
+      patient: selectedAppointmentDetails.patient,
+      procedure: selectedAppointmentDetails.procedure,
+      procedureValue: selectedAppointmentDetails.procedureValue || "",
+      professional: selectedAppointmentDetails.professional,
+    });
+  }
+
+  function handleSaveEditedAppointment() {
+    if (!selectedAppointmentDetails?.appointmentId || !selectedAppointmentDetails.canEditStatus) {
+      return;
+    }
+
+    if (!editAppointment.patient.trim() || !editAppointment.procedure.trim()) {
+      setEditAppointmentError("Preencha paciente e procedimento.");
+      return;
+    }
+
+    if (parseCurrencyToCents(editAppointment.procedureValue) <= 0) {
+      setEditAppointmentError("Informe um valor válido para o procedimento.");
+      return;
+    }
+
+    if (parseTimeToMinutes(editAppointment.endTime) <= parseTimeToMinutes(editAppointment.startTime)) {
+      setEditAppointmentError("O horário final precisa ser maior que o inicial.");
+      return;
+    }
+
+    const updatedPatientName = editAppointment.patient.trim();
+
+    setAppointmentList((currentAppointments) =>
+      currentAppointments.map((appointment) =>
+        appointment.id === selectedAppointmentDetails.appointmentId
+          ? {
+              ...appointment,
+              date: editAppointment.date,
+              startTime: editAppointment.startTime,
+              endTime: editAppointment.endTime,
+              patient: updatedPatientName,
+              procedure: editAppointment.procedure.trim(),
+              procedureValue: editAppointment.procedureValue,
+              professional: editAppointment.professional.trim(),
+            }
+          : appointment
+      )
+    );
+    setSelectedAppointmentDetails((currentDetails) =>
+      currentDetails
+        ? {
+            ...currentDetails,
+            date: editAppointment.date,
+            startTime: editAppointment.startTime,
+            endTime: editAppointment.endTime,
+            patient: updatedPatientName,
+            procedure: editAppointment.procedure.trim(),
+            procedureValue: editAppointment.procedureValue,
+            professional: editAppointment.professional.trim(),
+          }
+        : currentDetails
+    );
+    setIsEditingAppointment(false);
+    setEditAppointmentError("");
+    setStatusNotification({
+      title: "Agendamento atualizado",
+      description: `Os dados de ${updatedPatientName} foram atualizados com sucesso.`,
+    });
+  }
+
+  function handleStockDraftChange(productId: string, value: string) {
+    const numericValue = value.replace(/\D/g, "");
+    setStockControlError("");
+
+    if (!numericValue) {
+      setStockDraftByProductId((current) => {
+        const next = { ...current };
+        delete next[productId];
+        return next;
+      });
+      return;
+    }
+
+    setStockDraftByProductId((current) => ({
+      ...current,
+      [productId]: numericValue,
+    }));
   }
 
   function handleUpdateAppointmentStatus() {
     if (!selectedAppointmentDetails?.canEditStatus || !selectedAppointmentDetails.appointmentId) {
       return;
+    }
+
+    const appointmentId = selectedAppointmentDetails.appointmentId;
+    const previousUsage = appointmentStockUsage[appointmentId] ?? {};
+
+    if (editableStatus === "concluido") {
+      const selectedStockItems = Object.entries(stockDraftByProductId)
+        .map(([productId, quantity]) => ({
+          productId,
+          quantity: Number(quantity),
+        }))
+        .filter((item) => item.quantity > 0);
+
+      if (selectedStockItems.length === 0) {
+        setDetailsTab("estoque");
+        setStockControlError("Selecione ao menos um produto e a quantidade para concluir.");
+        return;
+      }
+
+      for (const item of selectedStockItems) {
+        const product = stockProducts.find((stockItem) => stockItem.id === item.productId);
+        if (!product) {
+          continue;
+        }
+
+        const availableForThisAppointment = product.quantity + (previousUsage[item.productId] ?? 0);
+        if (item.quantity > availableForThisAppointment) {
+          setDetailsTab("estoque");
+          setStockControlError(
+            `Quantidade inválida para ${product.name}. Disponível: ${availableForThisAppointment} ${product.unit}.`
+          );
+          return;
+        }
+      }
+
+      setStockProducts((currentProducts) =>
+        currentProducts.map((product) => {
+          const newQuantity = Number(stockDraftByProductId[product.id] ?? 0);
+          const oldQuantity = previousUsage[product.id] ?? 0;
+          const delta = newQuantity - oldQuantity;
+          return { ...product, quantity: product.quantity - delta };
+        })
+      );
+      setAppointmentStockUsage((currentUsage) => ({
+        ...currentUsage,
+        [appointmentId]: Object.fromEntries(
+          selectedStockItems.map((item) => [item.productId, item.quantity])
+        ),
+      }));
+      setStockControlError("");
+    } else if (Object.keys(previousUsage).length > 0) {
+      setStockProducts((currentProducts) =>
+        currentProducts.map((product) => ({
+          ...product,
+          quantity: product.quantity + (previousUsage[product.id] ?? 0),
+        }))
+      );
+      setAppointmentStockUsage((currentUsage) => {
+        const nextUsage = { ...currentUsage };
+        delete nextUsage[appointmentId];
+        return nextUsage;
+      });
+      setStockControlError("");
     }
 
     const patientName = selectedAppointmentDetails.patient;
@@ -782,6 +1161,27 @@ export default function AgendaPage() {
     };
   }, [statusNotification]);
 
+  useEffect(() => {
+    if (!isProfessionalFilterOpen) {
+      return;
+    }
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        professionalsFilterRef.current &&
+        !professionalsFilterRef.current.contains(event.target as Node)
+      ) {
+        setIsProfessionalFilterOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isProfessionalFilterOpen]);
+
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
@@ -818,13 +1218,67 @@ export default function AgendaPage() {
               </button>
             </div>
 
-            <button
-              type="button"
-              className="flex h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm text-slate-600"
-            >
-              <UserSearch className="h-4 w-4" />
-              Profissionais
-            </button>
+            <div className="relative" ref={professionalsFilterRef}>
+              <button
+                type="button"
+                className="flex h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm text-slate-600"
+                onClick={() => setIsProfessionalFilterOpen((current) => !current)}
+                aria-expanded={isProfessionalFilterOpen}
+                aria-haspopup="dialog"
+              >
+                <UserSearch className="h-4 w-4" />
+                {selectedProfessionals.length === 0
+                  ? "Profissionais"
+                  : `${selectedProfessionals.length} profissional(is)`}
+              </button>
+              {isProfessionalFilterOpen ? (
+                <div className="absolute right-0 top-12 z-40 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">
+                    Filtrar profissionais
+                  </p>
+                  <button
+                    type="button"
+                    className={`mb-2 flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm ${
+                      selectedProfessionals.length === 0
+                        ? "bg-blue-50 font-semibold text-blue-700"
+                        : "text-slate-600 hover:bg-slate-50"
+                    }`}
+                    onClick={() => setSelectedProfessionals([])}
+                  >
+                    Todos
+                    {selectedProfessionals.length === 0 ? (
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.08em]">Ativo</span>
+                    ) : null}
+                  </button>
+                  <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
+                    {availableProfessionals.map((professional) => {
+                      const isSelected = selectedProfessionals.includes(professional);
+
+                      return (
+                        <label
+                          key={professional}
+                          className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                            checked={isSelected}
+                            onChange={() =>
+                              setSelectedProfessionals((current) =>
+                                current.includes(professional)
+                                  ? current.filter((item) => item !== professional)
+                                  : [...current, professional]
+                              )
+                            }
+                          />
+                          <span className="truncate">{professional}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
             <button
               type="button"
               className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-500"
@@ -872,6 +1326,10 @@ export default function AgendaPage() {
             <span className="h-2 w-2 rounded-full bg-indigo-500" />
             Em andamento
           </span>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 font-semibold bg-gray-100 px-3 py-1 text-gray-800">
+            <span className="h-2 w-2 rounded-full bg-cyan-500" />
+            Concluído
+          </span>
         </div>
        
 
@@ -904,6 +1362,7 @@ export default function AgendaPage() {
                                 endTime: appointment.endTime,
                                 patient: appointment.patient,
                                 procedure: appointment.procedure,
+                                procedureValue: appointment.procedureValue,
                                 professional: appointment.professional,
                                 status: appointment.status,
                                 canEditStatus: true,
@@ -919,11 +1378,6 @@ export default function AgendaPage() {
                               {appointment.professional ? ` - ${appointment.professional}` : ""}
                             </p>
 
-                            {appointment.badge ? (
-                              <span className="absolute right-2 top-2 rounded bg-rose-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                                {appointment.badge}
-                              </span>
-                            ) : null}
                           </article>
                         ))}
 
@@ -1041,6 +1495,7 @@ export default function AgendaPage() {
                                     endTime: event.endTime,
                                     patient: event.patient,
                                     procedure: event.title,
+                                    procedureValue: event.procedureValue,
                                     professional: event.professional,
                                     status: event.status,
                                     canEditStatus: Boolean(event.canEditStatus && event.appointmentId),
@@ -1074,13 +1529,61 @@ export default function AgendaPage() {
             </div>
           </div>
         ) : (
-          <div className="flex min-h-[360px] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-            <div>
-              <CalendarDays className="mx-auto mb-3 h-6 w-6 text-slate-400" />
-              <p className="text-sm font-semibold text-slate-700">Visão mensal em preparação</p>
-              <p className="mt-1 text-xs text-slate-500">
-                Envie o próximo layout e eu implemento esse modo igual ao seu design.
-              </p>
+          <div className="overflow-x-auto">
+            <div className="min-w-[1080px] overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <div className="grid grid-cols-7 bg-slate-50/90">
+                {monthDayLabels.map((label) => (
+                  <div
+                    key={label}
+                    className="border-b border-r border-slate-200 px-3 py-3 text-center text-xs font-semibold tracking-[0.08em] text-slate-400 last:border-r-0"
+                  >
+                    {label}
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-7">
+                {monthGridDays.map((day) => {
+                  const dayKey = toDateKey(day);
+                  const dayAppointments = monthlyAppointmentsByDate[dayKey] ?? [];
+                  const isToday = dayKey === todayKey;
+                  const isOutsideCurrentMonth = day.getMonth() !== monthStartDate.getMonth();
+                  const isSelectedDay = dayKey === selectedDateKey;
+
+                  return (
+                    <button
+                      key={dayKey}
+                      type="button"
+                      className={`flex min-h-[128px] flex-col items-start justify-start border-b border-r border-slate-200 px-2.5 py-2 text-left align-top transition hover:bg-slate-50 ${
+                        isOutsideCurrentMonth ? "bg-slate-50/70" : "bg-white"
+                      } ${isSelectedDay ? "ring-1 ring-inset ring-indigo-200" : ""}`}
+                      onClick={() => {
+                        setSelectedDate(day);
+                        setViewMode("day");
+                      }}
+                    >
+                      <p
+                        className={`mb-1.5 text-sm font-semibold ${
+                          isToday
+                            ? "text-indigo-600 underline underline-offset-2"
+                            : isOutsideCurrentMonth
+                              ? "text-slate-300"
+                              : "text-slate-700"
+                        }`}
+                      >
+                        {String(day.getDate()).padStart(2, "0")}
+                      </p>
+
+                      {dayAppointments.length > 0 ? (
+                        <span className="mt-1.5 flex h-5 items-center rounded bg-indigo-100 px-2 text-[11px] font-medium text-indigo-700">
+                          {dayAppointments.length}{" "}
+                          {dayAppointments.length === 1 ? "agendamento" : "agendamentos"}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
@@ -1108,13 +1611,145 @@ export default function AgendaPage() {
             </div>
 
             <div className="flex-1 space-y-5 overflow-y-auto bg-slate-50 px-5 py-5 text-sm text-slate-700">
-              <div className="rounded-xl bg-white p-4 shadow-sm flex items-center gap-2">
-                <UserIcon className="h-4 w-4 text-blue-600" />  
-                <p className="text-lg font-bold text-slate-800">{selectedAppointmentDetails.patient}</p>
-                <p className="mt-1 text-sm text-blue-700">{selectedAppointmentDetails.procedure}</p>
+              {isEditingAppointment ? (
+                <div className="rounded-xl bg-white p-4 shadow-sm">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">
+                    Editar agendamento
+                  </p>
+                  <div className="space-y-3">
+                    <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                      Cliente
+                      <input
+                        type="text"
+                        className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none"
+                        value={editAppointment.patient}
+                        onChange={(event) =>
+                          setEditAppointment((current) => ({ ...current, patient: event.target.value }))
+                        }
+                      />
+                    </label>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                        Procedimento
+                        <select
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none"
+                          value={editAppointment.procedure}
+                          onChange={(event) =>
+                            setEditAppointment((current) => ({ ...current, procedure: event.target.value }))
+                          }
+                        >
+                          {procedureOptions.map((procedure) => (
+                            <option key={procedure} value={procedure}>
+                              {procedure}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                        Profissional
+                        <select
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none"
+                          value={editAppointment.professional}
+                          onChange={(event) =>
+                            setEditAppointment((current) => ({ ...current, professional: event.target.value }))
+                          }
+                        >
+                          {professionalOptions.map((professional) => (
+                            <option key={professional} value={professional}>
+                              {professional}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                      Valor do procedimento
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none"
+                        placeholder="R$ 0,00"
+                        value={editAppointment.procedureValue}
+                        onChange={(event) =>
+                          setEditAppointment((current) => ({
+                            ...current,
+                            procedureValue: formatCurrencyInput(event.target.value),
+                          }))
+                        }
+                      />
+                    </label>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <label className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                        Data
+                        <input
+                          type="date"
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none"
+                          value={editAppointment.date}
+                          onChange={(event) =>
+                            setEditAppointment((current) => ({ ...current, date: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                        Início
+                        <input
+                          type="time"
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none"
+                          value={editAppointment.startTime}
+                          onChange={(event) =>
+                            setEditAppointment((current) => ({ ...current, startTime: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                        Término
+                        <input
+                          type="time"
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none"
+                          value={editAppointment.endTime}
+                          onChange={(event) =>
+                            setEditAppointment((current) => ({ ...current, endTime: event.target.value }))
+                          }
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              ) : detailsTab === "status" ? (
+                <div className="rounded-xl bg-white p-4 shadow-sm flex items-center gap-2">
+                  <UserIcon className="h-4 w-4 text-blue-600" />
+                  <p className="text-lg font-bold text-slate-800">{selectedAppointmentDetails.patient}</p>
+                  <p className="mt-1 text-sm text-blue-700">{selectedAppointmentDetails.procedure}</p>
+                </div>
+              ) : null}
+
+              <div className="rounded-xl border border-slate-200 bg-white p-1">
+                <button
+                  type="button"
+                  className={`w-1/2 rounded-lg px-3 py-2 text-sm font-semibold ${
+                    detailsTab === "status"
+                      ? "bg-indigo-50 text-indigo-700"
+                      : "text-slate-600 hover:bg-slate-50"
+                  }`}
+                  onClick={() => setDetailsTab("status")}
+                >
+                  Status
+                </button>
+                <button
+                  type="button"
+                  className={`w-1/2 rounded-lg px-3 py-2 text-sm font-semibold ${
+                    detailsTab === "estoque"
+                      ? "bg-indigo-50 text-indigo-700"
+                      : "text-slate-600 hover:bg-slate-50"
+                  }`}
+                  onClick={() => setDetailsTab("estoque")}
+                >
+                  Estoque {selectedStockItemsCount > 0 ? `(${selectedStockItemsCount})` : ""}
+                </button>
               </div>
 
-              <div className="rounded-xl bg-white p-4 shadow-sm">
+              {detailsTab === "status" ? (
+                <div className="rounded-xl bg-white p-4 shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
                   <CalendarIcon className="h-4 w-4 text-blue-600" />
                   <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">
@@ -1123,73 +1758,196 @@ export default function AgendaPage() {
                 </div>
                 <div className="space-y-2">
                   <p className="flex justify-between gap-3">
-                    <span className="text-slate-500">Data</span>
+                    <span className="text-slate-500 flex items-center gap-2"> <CalendarIcon className="h-4 w-4 text-blue-600" />Data</span>
                     <span className="font-semibold text-slate-800">{selectedAppointmentDetails.date}</span>
                   </p>
                   <p className="flex justify-between gap-3">
-                    <span className="text-slate-500">Horário</span>
+                    <span className="text-slate-500 flex items-center gap-2"> <Clock3 className="h-4 w-4 text-blue-600" />Horário</span>
                     <span className="font-semibold text-slate-800">
                       {selectedAppointmentDetails.startTime} - {selectedAppointmentDetails.endTime}
                     </span>
                   </p>
                   <p className="flex justify-between gap-3">
-                    <span className="text-slate-500">Profissional</span>
+                    <span className="text-slate-500 flex items-center gap-2"> <UserIcon className="h-4 w-4 text-blue-600" />Profissional</span>
                     <span className="font-semibold text-slate-800">
                       {selectedAppointmentDetails.professional || "Não informado"}
                     </span>
                   </p>
-                </div>
-              </div>
-
-              <div className="rounded-xl bg-white p-4 shadow-sm">
-              <div className="flex items-center gap-2 mb-3">
-                  <ChartNoAxesColumn className="h-4 w-4 text-blue-600" />
-                  <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Status</p>
-                </div>
-                <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700">
-                  <span className={`h-2.5 w-2.5 rounded-full ${statusDotColor(editableStatus)}`} />
-                  {statusLabel(editableStatus)}
-                </div>
-                {selectedAppointmentDetails.canEditStatus ? (
-                  <select
-                    className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm text-blue-900"
-                    value={editableStatus}
-                    onChange={(event) => setEditableStatus(event.target.value as AppointmentStatus)}
-                  >
-                    {appointmentStatusOptions.map((status) => (
-                      <option key={status} value={status}>
-                        {statusLabel(status)}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <p className="rounded-lg bg-blue-50 px-3 py-2 font-semibold text-blue-900">
-                    {statusLabel(selectedAppointmentDetails.status)}
+                  <p className="flex justify-between gap-3">
+                    
+                    <span className="text-slate-500 flex items-center gap-2"> <CoinsIcon className="h-4 w-4 text-blue-600" />Valor</span>
+                    <span className="font-semibold text-slate-800">
+                      {selectedAppointmentDetails.procedureValue || "Não informado"}
+                    </span>
                   </p>
-                )}
-                {!selectedAppointmentDetails.canEditStatus ? (
-                  <p className="mt-2 text-xs text-blue-700">Este atendimento é apenas visualização.</p>
-                ) : null}
-              </div>
+                </div>
+                </div>
+              ) : null}
+
+              {detailsTab === "status" ? (
+                <div className="rounded-xl bg-white p-4 shadow-sm">
+                  <div className="mb-3 flex items-center gap-2">
+                    <ChartNoAxesColumn className="h-4 w-4 text-blue-600" />
+                    <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Status</p>
+                  </div>
+                  <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700">
+                    <span className={`h-2.5 w-2.5 rounded-full ${statusDotColor(editableStatus)}`} />
+                    {statusLabel(editableStatus)}
+                  </div>
+                  {selectedAppointmentDetails.canEditStatus ? (
+                    <div className="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                      {appointmentStatusOptions.map((status) => (
+                        <button
+                          key={status}
+                          type="button"
+                          className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition ${statusOptionButtonStyles(
+                            status,
+                            editableStatus
+                          )}`}
+                          onClick={() => {
+                            setEditableStatus(status);
+                            setStockControlError("");
+                            if (status === "concluido") {
+                              setDetailsTab("estoque");
+                            }
+                          }}
+                          aria-pressed={editableStatus === status}
+                        >
+                          <span className={`h-2.5 w-2.5 rounded-full ${statusDotColor(status)}`} />
+                          {statusLabel(status)}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="rounded-lg bg-blue-50 px-3 py-2 font-semibold text-blue-900">
+                      {statusLabel(selectedAppointmentDetails.status)}
+                    </p>
+                  )}
+                  {!selectedAppointmentDetails.canEditStatus ? (
+                    <p className="mt-2 text-xs text-blue-700">Este atendimento é apenas visualização.</p>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="rounded-xl bg-white p-4 shadow-sm">
+                  <div className="mb-4 border-b border-slate-100 pb-4">
+                    <h4 className="text-2xl font-bold text-slate-800">Controle de estoque</h4>
+                    <p className="mt-1 text-base text-slate-500">
+                      Registre os itens utilizados neste atendimento
+                    </p>
+                  </div>
+                  <div className="space-y-3">
+                    {stockProducts.map((product) => {
+                      const availableForThisAppointment =
+                        product.quantity + (selectedAppointmentStockUsage[product.id] ?? 0);
+                      const currentQuantity = stockDraftByProductId[product.id] ?? "";
+                      const isSelected = Number(currentQuantity) > 0;
+
+                      return (
+                        <div
+                          key={product.id}
+                          className="flex items-center justify-between gap-3 rounded-xl px-1 py-1.5 text-sm text-slate-700"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-xl">
+                              {product.icon}
+                            </div>
+                            <div>
+                              <p className="text-base font-semibold text-slate-900">{product.name}</p>
+                              <p className="text-sm text-slate-500">
+                                {availableForThisAppointment} {product.unit} | {Number(currentQuantity || 0)} un.
+                                utilizados
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center rounded-2xl border border-slate-200 bg-white px-2 py-1 shadow-sm">
+                            <button
+                              type="button"
+                              className="flex h-8 w-8 items-center justify-center rounded-full text-xl text-slate-500 hover:bg-slate-100"
+                              onClick={() => {
+                                const currentValue = Number(currentQuantity || 0);
+                                const nextValue = Math.max(0, currentValue - 1);
+                                handleStockDraftChange(product.id, nextValue > 0 ? String(nextValue) : "");
+                              }}
+                            >
+                              -
+                            </button>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              className="w-12 bg-transparent text-center text-xl font-semibold text-slate-800 outline-none"
+                              value={currentQuantity || 0}
+                              onChange={(event) => handleStockDraftChange(product.id, event.target.value)}
+                            />
+                            <button
+                              type="button"
+                              className="flex h-8 w-8 items-center justify-center rounded-full text-xl text-slate-500 hover:bg-slate-100"
+                              onClick={() => {
+                                const currentValue = Number(currentQuantity || 0);
+                                const nextValue = Math.min(availableForThisAppointment, currentValue + 1);
+                                handleStockDraftChange(product.id, String(nextValue));
+                              }}
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-3 text-xs text-slate-500">
+                    Ao salvar como concluído, o estoque será baixado conforme os itens selecionados.
+                  </p>
+                </div>
+              )}
             </div>
 
+            {editAppointmentError ? (
+              <p className="px-5 pb-1 text-sm font-medium text-rose-600">{editAppointmentError}</p>
+            ) : null}
+            {stockControlError ? (
+              <p className="px-5 pb-1 text-sm font-medium text-rose-600">{stockControlError}</p>
+            ) : null}
+
             <div className="flex gap-2 border-t border-blue-100 bg-white px-5 py-4">
-              {selectedAppointmentDetails.canEditStatus ? (
+            {selectedAppointmentDetails.canEditStatus && !isEditingAppointment ? (
                 <button
                   type="button"
                   className="flex-1 rounded-lg border bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-800"
                   onClick={handleUpdateAppointmentStatus}
                 >
-                  Salvar status
+                  Salvar
                 </button>
               ) : null}
-              <button
-                type="button"
-                className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
-                onClick={() => setSelectedAppointmentDetails(null)}
-              >
-                Fechar
-              </button>
+              {selectedAppointmentDetails.canEditStatus && !isEditingAppointment ? (
+                <button
+                  type="button"
+                  className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                  onClick={handleOpenEditAppointment}
+                >
+                  Editar agendamento
+                </button>
+              ) : null}
+              {selectedAppointmentDetails.canEditStatus && isEditingAppointment ? (
+                <>
+                  <button
+                    type="button"
+                    className="flex-1 rounded-lg border bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                    onClick={handleSaveEditedAppointment}
+                  >
+                    Salvar alterações
+                  </button>
+                  <button
+                    type="button"
+                    className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                    onClick={() => {
+                      setIsEditingAppointment(false);
+                      setEditAppointmentError("");
+                    }}
+                  >
+                    Cancelar edição
+                  </button>
+                </>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1197,26 +1955,26 @@ export default function AgendaPage() {
 
       {isCreateModalOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 p-4 backdrop-blur-[1px]"
+          className="fixed inset-0 z-50 flex justify-end bg-slate-900/35 backdrop-blur-[1px]"
           onClick={() => setIsCreateModalOpen(false)}
         >
           <div
-            className="w-full max-w-2xl overflow-hidden rounded-3xl bg-white shadow-2xl"
+            className="flex h-full w-full max-w-xl flex-col border-l border-indigo-100 bg-white shadow-2xl shadow-indigo-200/60"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-slate-200 px-8 py-6">
-              <h3 className="text-4xl font-bold text-slate-800">Novo Agendamento</h3>
+            <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
+              <h3 className="text-2xl font-bold text-slate-800">Novo Agendamento</h3>
               <button
                 type="button"
                 className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                 onClick={() => setIsCreateModalOpen(false)}
-                aria-label="Fechar modal"
+                aria-label="Fechar painel"
               >
-                <X className="h-8 w-8" />
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="space-y-6 px-8 py-6">
+            <div className="flex-1 space-y-6 overflow-y-auto bg-slate-50 px-5 py-5">
               <label className="block text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
                 Cliente
                 <div className="mt-2 flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3">
@@ -1267,6 +2025,23 @@ export default function AgendaPage() {
                   </select>
                 </label>
               </div>
+
+              <label className="block text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
+                Valor do procedimento
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-base text-slate-700 outline-none placeholder:text-slate-400"
+                  placeholder="R$ 0,00"
+                  value={newAppointment.procedureValue}
+                  onChange={(event) =>
+                    setNewAppointment((current) => ({
+                      ...current,
+                      procedureValue: formatCurrencyInput(event.target.value),
+                    }))
+                  }
+                />
+              </label>
 
               <div className="grid gap-4 sm:grid-cols-3">
                 <label className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
@@ -1326,23 +2101,23 @@ export default function AgendaPage() {
             </div>
 
             {createAppointmentError ? (
-              <p className="px-8 pb-2 text-sm font-medium text-rose-600">{createAppointmentError}</p>
+              <p className="px-5 pb-2 text-sm font-medium text-rose-600">{createAppointmentError}</p>
             ) : null}
 
-            <div className="flex justify-end gap-3 px-8 pb-7">
+            <div className="flex gap-3 border-t border-indigo-100 bg-white px-5 py-4">
               <button
                 type="button"
-                className="rounded-xl px-5 py-3 text-base font-semibold text-slate-600 hover:bg-slate-100"
-                onClick={() => setIsCreateModalOpen(false)}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="rounded-xl bg-indigo-600 px-6 py-3 text-base font-semibold text-white shadow-lg shadow-indigo-300/60 hover:bg-indigo-700"
+                className="flex-1 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
                 onClick={handleCreateAppointment}
               >
                 Salvar Agendamento
+              </button>
+              <button
+                type="button"
+                className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                onClick={() => setIsCreateModalOpen(false)}
+              >
+                Cancelar
               </button>
             </div>
           </div>
