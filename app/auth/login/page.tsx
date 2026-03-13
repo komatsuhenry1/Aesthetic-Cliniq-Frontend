@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ArrowRightIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { ApiRequestError, type LoginResponse, loginRequest } from "@/services/api/auth";
 
 function BrandIcon() {
   return (
@@ -73,12 +74,32 @@ function VisibilityIcon({ visible }: { visible: boolean }) {
   );
 }
 
+function getClinicNameFromLoginResponse(response: LoginResponse) {
+  const nestedData = typeof response.data === "object" && response.data ? response.data : null;
+  const nestedUser =
+    nestedData && "user" in nestedData && typeof nestedData.user === "object" ? nestedData.user : null;
+
+  const clinicNameCandidates = [
+    response.clinicName,
+    response.clinic?.name,
+    response.user?.clinicName,
+    response.user?.clinic?.name,
+    nestedUser && "clinic" in nestedUser ? nestedUser.clinic : undefined,
+  ];
+
+  return clinicNameCandidates.find(
+    (clinicName): clinicName is string => typeof clinicName === "string" && clinicName.trim().length > 0
+  );
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [authError, setAuthError] = useState("");
   const router = useRouter();
   const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const isEmailValid = emailPattern.test(email.trim());
@@ -86,17 +107,54 @@ export default function LoginPage() {
   const hasRequiredFields = email.trim().length > 0 && password.trim().length > 0;
   const canSubmit = hasRequiredFields && isEmailValid && hasMinimumLength;
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitted(true);
+    setAuthError("");
 
     if (!canSubmit) {
       return;
     }
- 
-    router.push("/dashboard");
-    // Aqui vai a integração com sua API de login.
-    console.log("Login válido para envio", { email, rememberMe });
+
+    try {
+      setIsLoading(true);
+      const response = await loginRequest({
+        email: email.trim(),
+        password,
+      });
+
+      const token =
+        (typeof response.data === "object" && response.data && "token" in response.data
+          ? response.data.token
+          : undefined) ?? response.token ?? response.accessToken;
+
+      if (typeof token === "string" && token.trim().length > 0) {
+        localStorage.setItem("token", token);
+      }
+
+      const clinicName = getClinicNameFromLoginResponse(response);
+      if (clinicName) {
+        localStorage.setItem("clinicName", clinicName);
+      }
+
+      if (rememberMe) {
+        localStorage.setItem("rememberLoginEmail", email.trim());
+      } else {
+        localStorage.removeItem("rememberLoginEmail");
+      }
+
+      router.push("/dashboard");
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        setAuthError(error.message);
+      } else if (error instanceof Error) {
+        setAuthError(error.message);
+      } else {
+        setAuthError("Nao foi possivel fazer login. Tente novamente.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   return (
@@ -203,11 +261,14 @@ export default function LoginPage() {
             <button
               type="submit"
               className="group mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-full bg-blue-500 text-base font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400 sm:h-12 sm:text-lg"
-              disabled={!canSubmit}
+              disabled={!canSubmit || isLoading}
             >
-              Entrar
+              {isLoading ? "Entrando..." : "Entrar"}
               <ArrowRightIcon className="h-4 w-4 transition-transform duration-200 motion-safe:group-hover:translate-x-1" />
             </button>
+            {authError ? (
+              <p className="text-center text-xs font-medium text-rose-600 sm:text-sm">{authError}</p>
+            ) : null}
           </form>
 
           <div className="mt-6 border-t border-slate-200 pt-5 text-center text-sm text-slate-500 sm:mt-8 sm:pt-6 sm:text-base">

@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { ArrowRightIcon, Building2Icon } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ApiRequestError, registerRequest } from "@/services/api/auth";
 
 function BrandIcon() {
   return (
@@ -83,6 +85,10 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const router = useRouter();
 
   const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const phoneDigits = phone.replace(/\D/g, "");
@@ -101,16 +107,43 @@ export default function RegisterPage() {
   const canSubmit =
     hasRequiredFields && hasMinimumLength && passwordsMatch && isEmailValid && isPhoneValid;
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitted(true);
+    setAuthError("");
+    setSuccessMessage("");
 
     if (!canSubmit) {
       return;
     }
 
-    // Aqui vai a integração com sua API de cadastro.
-    console.log("Formulário válido para envio");
+    try {
+      setIsLoading(true);
+
+      const response = await registerRequest({
+        clinic: clinicName.trim(),
+        name: ownerName.trim(),
+        email: email.trim(),
+        phone: phoneDigits,
+        password
+      });
+
+      localStorage.setItem("clinicName", response.clinicName || clinicName.trim());
+      setSuccessMessage(response.message || "Cadastro realizado com sucesso. Redirecionando para login...");
+      window.setTimeout(() => {
+        router.push("/auth/login");
+      }, 900);
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        setAuthError(error.message);
+      } else if (error instanceof Error) {
+        setAuthError(error.message);
+      } else {
+        setAuthError("Nao foi possivel concluir o cadastro. Tente novamente.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   function handlePhoneChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -361,11 +394,17 @@ export default function RegisterPage() {
             <button
               type="submit"
               className="group mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-full bg-blue-500 text-base font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400 sm:h-12 sm:text-lg"
-              disabled={!canSubmit}
+              disabled={!canSubmit || isLoading}
             >
-              Criar conta
+              {isLoading ? "Criando conta..." : "Criar conta"}
               <ArrowRightIcon className="h-4 w-4 transition-transform duration-200 motion-safe:group-hover:translate-x-1" />
             </button>
+            {authError ? (
+              <p className="text-center text-xs font-medium text-rose-600 sm:text-sm">{authError}</p>
+            ) : null}
+            {successMessage ? (
+              <p className="text-center text-xs font-medium text-emerald-600 sm:text-sm">{successMessage}</p>
+            ) : null}
           </form>
 
           <div className="mt-6 border-t border-slate-200 pt-5 text-center text-sm text-slate-500 sm:mt-8 sm:pt-6 sm:text-base">

@@ -1,16 +1,34 @@
 "use client";
 
 import { Bell } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+const DEFAULT_CLINIC_NAME = "Não logado";
+
+function getStoredClinicName() {
+  if (typeof window === "undefined") {
+    return DEFAULT_CLINIC_NAME;
+  }
+
+  return localStorage.getItem("clinicName") || DEFAULT_CLINIC_NAME;
+}
 
 export function AppHeader() {
-  const [clinicName] = useState(() => {
-    if (typeof window === "undefined") {
-      return "Clínica Bella Face";
-    }
+  const [clinicName, setClinicName] = useState(DEFAULT_CLINIC_NAME);
 
-    return localStorage.getItem("clinicName") || "Clínica Bella Face";
-  });
+  useEffect(() => {
+    setClinicName(getStoredClinicName());
+
+    const handleStorage = () => {
+      setClinicName(getStoredClinicName());
+    };
+
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
 
   return (
     <header className="fixed left-0 right-0 top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur xl:left-64">
@@ -30,7 +48,7 @@ export function AppHeader() {
             <Bell className="h-4 w-4" />
           </button>
 
-          <div className="hidden items-center gap-2 px-2 py-1.5 sm:flex">
+          {/* <div className="hidden items-center gap-2 px-2 py-1.5 sm:flex">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 text-xs font-semibold text-orange-700">
               AS
             </div>
@@ -40,7 +58,7 @@ export function AppHeader() {
               </p>
               <p className="text-[11px] text-slate-500">Administrator</p>
             </div>
-          </div>
+          </div> */}
         </div>
       </div>
     </header>

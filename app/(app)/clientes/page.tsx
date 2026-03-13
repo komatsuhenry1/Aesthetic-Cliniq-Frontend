@@ -1,10 +1,11 @@
 import { MaintenanceScreen } from "@/components/maintenance-screen";
 
-export default function ClientesPage() {
+export default function ContatosPage() {
   return (
     <MaintenanceScreen
-      title="Clientes"
-      description="A pagina de clientes esta em desenvolvimento. Em breve voce podera gerenciar cadastros, historicos e relacionamento com seus pacientes."
+      title="Contatos"
+      description="A pagina de contatos esta em desenvolvimento. Em breve voce podera gerenciar cadastros, historicos e relacionamento com seus pacientes."
     />
+
   );
 }
