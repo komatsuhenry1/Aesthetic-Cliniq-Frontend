@@ -2,6 +2,7 @@
 
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   CalendarIcon,
   ChevronDown,
@@ -10,18 +11,29 @@ import {
   Clock3,
   Clock4,
   Lock,
+  FileText,
+  Activity,
   UserSearch,
   UserIcon,
+  UserPlus,
+  CheckCircle2,
   X,
   ChartNoAxesColumn,
   CoinsIcon,
+  CreditCard,
   InfoIcon,
-  MinusIcon,
-  PlusIcon,
   CalendarClockIcon,
+  PlusIcon,
+  MinusIcon,
 } from "lucide-react";
 import { StatusNotification } from "@/components/status-notification";
-import { getAppointmentsByDate, getAppointmentsByWeek } from "@/services/api/appointment";
+import {
+  getAppointmentsByDate,
+  getAppointmentsByWeek,
+  getMonthlyAppointmentCount,
+} from "@/services/api/appointment";
+import type { MonthlyCountItem } from "@/services/api/appointment";
+import { getProfessionalNames } from "@/services/api/professional";
 import { WeekAppointmentCard } from "./components/week-appointment-card";
 import {
   HOUR_ROW_HEIGHT,
@@ -64,6 +76,7 @@ import {
   normalizeProfessionalName,
   parseCurrencyToCents,
   parseTimeToMinutes,
+  paymentMethodLabel,
   statusDotColor,
   statusLabel,
   statusOptionButtonStyles,
@@ -71,10 +84,13 @@ import {
 } from "./utils";
 
 export default function AgendaPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [appointmentList, setAppointmentList] = useState<Appointment[]>([]);
+  const [monthlyCounts, setMonthlyCounts] = useState<MonthlyCountItem[]>([]);
   const [selectedAppointmentDetails, setSelectedAppointmentDetails] = useState<AppointmentDetails | null>(null);
   const [editableStatus, setEditableStatus] = useState<AppointmentStatus>("confirmado");
   const [detailsTab, setDetailsTab] = useState<DetailsTab>("status");
@@ -89,6 +105,8 @@ export default function AgendaPage() {
     procedureValue: "",
     notes: "",
     professional: "",
+    paymentMethod: "",
+    installments: "",
   });
   const [stockProducts, setStockProducts] = useState<StockProduct[]>(initialStockProducts);
   const [appointmentStockUsage, setAppointmentStockUsage] = useState<Record<string, Record<string, number>>>(
@@ -98,11 +116,21 @@ export default function AgendaPage() {
   const [stockControlError, setStockControlError] = useState("");
   const [statusNotification, setStatusNotification] = useState<AgendaStatusNotification | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isCreateDrawerClosing, setIsCreateDrawerClosing] = useState(false);
+  const [isDetailsDrawerClosing, setIsDetailsDrawerClosing] = useState(false);
   const [isProfessionalFilterOpen, setIsProfessionalFilterOpen] = useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [datePickerMonth, setDatePickerMonth] = useState(() => getStartOfMonth(new Date()));
   const [isCreateDatePickerOpen, setIsCreateDatePickerOpen] = useState(false);
   const [createDatePickerMonth, setCreateDatePickerMonth] = useState(() => getStartOfMonth(new Date()));
+  const [isCreateProfessionalSelectOpen, setIsCreateProfessionalSelectOpen] = useState(false);
+  const [isCreateProcedureSelectOpen, setIsCreateProcedureSelectOpen] = useState(false);
+  const [isEditDatePickerOpen, setIsEditDatePickerOpen] = useState(false);
+  const [editDatePickerMonth, setEditDatePickerMonth] = useState(() => getStartOfMonth(new Date()));
+  const [isEditProfessionalSelectOpen, setIsEditProfessionalSelectOpen] = useState(false);
+  const [isEditProcedureSelectOpen, setIsEditProcedureSelectOpen] = useState(false);
+  const [createProfessionalNameOptions, setCreateProfessionalNameOptions] = useState<string[]>(professionalOptions);
+  const [createProfessionalNamesLoading, setCreateProfessionalNamesLoading] = useState(false);
   const [selectedProfessionals, setSelectedProfessionals] = useState<string[]>([]);
   const [clientFilter, setClientFilter] = useState("");
   const [clientSearchPopoverOpen, setClientSearchPopoverOpen] = useState(false);
@@ -116,8 +144,99 @@ export default function AgendaPage() {
     professional: "",
     status: "confirmado",
     notes: "",
+    paymentMethod: "",
+    installments: "",
   }));
   const [createAppointmentError, setCreateAppointmentError] = useState("");
+
+  // States para Criação Rápida de Cliente
+  const [isQuickContactDrawerOpen, setIsQuickContactDrawerOpen] = useState(false);
+  const [isQuickContactDrawerClosing, setIsQuickContactDrawerClosing] = useState(false);
+  const [quickContactName, setQuickContactName] = useState("");
+  const [quickContactCPF, setQuickContactCPF] = useState("");
+  const [quickContactBirthDate, setQuickContactBirthDate] = useState("");
+  const [quickContactEmail, setQuickContactEmail] = useState("");
+  const [quickContactPhone, setQuickContactPhone] = useState("");
+  const [quickContactSubmitted, setQuickContactSubmitted] = useState(false);
+
+  const formatCPF = useCallback((value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 11);
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+    if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+  }, []);
+
+  const formatPhone = useCallback((value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 11);
+    if (digits.length <= 2) return `(${digits}`;
+    if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  }, []);
+
+  const formatBirthDate = useCallback((value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 8);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+  }, []);
+
+  const handleSaveQuickContact = () => {
+    setQuickContactSubmitted(true);
+    if (
+      quickContactName.trim() &&
+      quickContactPhone.replace(/\D/g, "").length === 11
+    ) {
+      // Simula salvar e preenche o agendamento
+      setNewAppointment((current) => ({
+        ...current,
+        patient: quickContactName.trim(),
+      }));
+      setIsQuickContactDrawerClosing(true);
+      setStatusNotification({
+        title: "Cliente Adicionado",
+        description: `${quickContactName} foi pré-selecionado para este agendamento.`,
+      });
+    }
+  };
+
+  const handleCloseQuickContact = () => {
+    setIsQuickContactDrawerClosing(true);
+  };
+
+  useEffect(() => {
+    if (!isQuickContactDrawerClosing) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setIsQuickContactDrawerOpen(false);
+      setIsQuickContactDrawerClosing(false);
+    }, 260);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [isQuickContactDrawerClosing]);
+
+  useEffect(() => {
+    const isNewAppointment = searchParams.get("newAppointment") === "true";
+    const patientName = searchParams.get("patient");
+
+    if (isNewAppointment) {
+      setIsCreateModalOpen(true);
+      if (patientName) {
+        setNewAppointment((current) => ({
+          ...current,
+          patient: patientName,
+        }));
+      }
+      // Limpa os parâmetros da URL sem recarregar a página
+      const newUrl = window.location.pathname;
+      router.replace(newUrl);
+    }
+  }, [searchParams, router]);
+
   const scheduleScrollRef = useRef<HTMLDivElement | null>(null);
   const weekScheduleScrollRef = useRef<HTMLDivElement | null>(null);
   const professionalsFilterRef = useRef<HTMLDivElement | null>(null);
@@ -128,7 +247,28 @@ export default function AgendaPage() {
     left: number;
   } | null>(null);
   const createDatePickerRef = useRef<HTMLDivElement | null>(null);
+  const createProfessionalSelectRef = useRef<HTMLDivElement | null>(null);
+  const createProcedureSelectRef = useRef<HTMLDivElement | null>(null);
+  const editDatePickerRef = useRef<HTMLDivElement | null>(null);
+  const editProfessionalSelectRef = useRef<HTMLDivElement | null>(null);
+  const editProcedureSelectRef = useRef<HTMLDivElement | null>(null);
   const clientFilterRef = useRef<HTMLDivElement | null>(null);
+  const paymentMethodOptions = [
+    { value: "dinheiro", label: "Dinheiro", hint: "Pagamento em espécie", icon: CoinsIcon },
+    { value: "cartao_credito", label: "Crédito", hint: "Cartão de crédito", icon: CreditCard },
+    { value: "cartao_debito", label: "Débito", hint: "Cartão de débito", icon: CreditCard },
+    { value: "pix", label: "PIX", hint: "Transferência", icon: CreditCard },
+  ] as const;
+  const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
+  const formatTimeInput = useCallback((value: string) => {
+    const digitsOnly = value.replace(/\D/g, "").slice(0, 4);
+
+    if (digitsOnly.length <= 2) {
+      return digitsOnly;
+    }
+
+    return `${digitsOnly.slice(0, 2)}:${digitsOnly.slice(2)}`;
+  }, []);
   const availableProfessionals = useMemo(() => {
     const professionals = new Set<string>();
 
@@ -142,6 +282,10 @@ export default function AgendaPage() {
 
     return Array.from(professionals).sort((first, second) => first.localeCompare(second, "pt-BR"));
   }, [appointmentList]);
+  const createProfessionalOptions = useMemo(() => {
+    const merged = new Set<string>([...createProfessionalNameOptions, ...availableProfessionals]);
+    return Array.from(merged).sort((first, second) => first.localeCompare(second, "pt-BR"));
+  }, [availableProfessionals, createProfessionalNameOptions]);
   const normalizedClientFilter = useMemo(() => clientFilter.trim().toLocaleLowerCase("pt-BR"), [clientFilter]);
   const filteredAppointmentList = useMemo(
     () =>
@@ -232,6 +376,29 @@ export default function AgendaPage() {
 
     return days;
   }, [createDatePickerMonthStart, createDatePickerMonthEnd]);
+  const editDatePickerMonthStart = useMemo(
+    () => getStartOfMonth(editDatePickerMonth),
+    [editDatePickerMonth]
+  );
+  const editDatePickerMonthEnd = useMemo(
+    () => getEndOfMonth(editDatePickerMonth),
+    [editDatePickerMonth]
+  );
+  const editDatePickerGridDays = useMemo(() => {
+    const firstGridDay = addDays(editDatePickerMonthStart, -editDatePickerMonthStart.getDay());
+    const lastGridDay = addDays(editDatePickerMonthEnd, 6 - editDatePickerMonthEnd.getDay());
+    const days: Date[] = [];
+
+    for (
+      let cursorDate = new Date(firstGridDay);
+      cursorDate <= lastGridDay;
+      cursorDate = addDays(cursorDate, 1)
+    ) {
+      days.push(new Date(cursorDate));
+    }
+
+    return days;
+  }, [editDatePickerMonthStart, editDatePickerMonthEnd]);
   const monthlyAppointmentsByDate = useMemo(() => {
     return filteredAppointmentList.reduce<Record<string, Appointment[]>>((accumulator, appointment) => {
       if (!accumulator[appointment.date]) {
@@ -241,6 +408,13 @@ export default function AgendaPage() {
       return accumulator;
     }, {});
   }, [filteredAppointmentList]);
+
+  const monthlyCountMap = useMemo(() => {
+    return monthlyCounts.reduce<Record<string, number>>((acc, item) => {
+      acc[item.date] = item.count;
+      return acc;
+    }, {});
+  }, [monthlyCounts]);
   const selectedMonthAppointments = useMemo(
     () =>
       filteredAppointmentList.filter((appointment) => {
@@ -311,6 +485,7 @@ export default function AgendaPage() {
           status: appointment.status,
           appointmentId: appointment.id,
           canEditStatus: true,
+          paymentMethod: appointment.paymentMethod,
         }))
       ),
     [selectedDateAppointments]
@@ -332,7 +507,7 @@ export default function AgendaPage() {
             dayIndex: dayDifference,
             startTime: appointment.startTime,
             endTime: appointment.endTime,
-            title: appointment.procedure,
+            title: appointment.procedure,               
             patient: appointment.patient,
             professional: normalizeProfessionalName(appointment.professional),
             procedureValue: appointment.procedureValue,
@@ -340,6 +515,7 @@ export default function AgendaPage() {
             status: appointment.status,
             appointmentId: appointment.id,
             canEditStatus: true,
+            paymentMethod: appointment.paymentMethod,
           };
         })
         .filter((event): event is WeeklyEvent => event !== null),
@@ -487,6 +663,26 @@ export default function AgendaPage() {
     setIsCreateDatePickerOpen((current) => !current);
   }
 
+  function openEditDatePicker() {
+    const baseDate = editAppointment.date ? new Date(`${editAppointment.date}T00:00:00`) : new Date();
+
+    setEditDatePickerMonth(getStartOfMonth(baseDate));
+    setIsEditDatePickerOpen((current) => !current);
+  }
+
+  const loadCreateProfessionalNames = useCallback(async () => {
+    setCreateProfessionalNamesLoading(true);
+
+    try {
+      const names = await getProfessionalNames();
+      setCreateProfessionalNameOptions(names.length > 0 ? names : professionalOptions);
+    } catch {
+      setCreateProfessionalNameOptions(professionalOptions);
+    } finally {
+      setCreateProfessionalNamesLoading(false);
+    }
+  }, []);
+
   function openCreateAppointmentModal() {
     setNewAppointment({
       date: "",
@@ -498,15 +694,26 @@ export default function AgendaPage() {
       professional: "",
       status: "confirmado",
       notes: "",
+      paymentMethod: "",
+      installments: "",
     });
     setCreateAppointmentError("");
     setIsCreateDatePickerOpen(false);
+    setIsCreateProfessionalSelectOpen(false);
+    setIsCreateProcedureSelectOpen(false);
     setIsCreateModalOpen(true);
+    setIsCreateDrawerClosing(false);
+    void loadCreateProfessionalNames();
   }
 
   function handleCreateAppointment() {
     if (!newAppointment.date || !newAppointment.startTime || !newAppointment.endTime) {
       setCreateAppointmentError("Preencha data, horário inicial e horário final.");
+      return;
+    }
+
+    if (!timePattern.test(newAppointment.startTime) || !timePattern.test(newAppointment.endTime)) {
+      setCreateAppointmentError("Digite os horários no formato HH:MM.");
       return;
     }
 
@@ -519,6 +726,15 @@ export default function AgendaPage() {
 
     if (!isBlockedSlot && (!newAppointment.patient.trim() || !newAppointment.procedure.trim())) {
       setCreateAppointmentError("Preencha paciente e procedimento.");
+      return;
+    }
+
+    if (
+      !isBlockedSlot &&
+      newAppointment.paymentMethod === "cartao_credito" &&
+      (!newAppointment.installments?.trim() || Number(newAppointment.installments) <= 0)
+    ) {
+      setCreateAppointmentError("Informe a quantidade de parcelas para o pagamento em crédito.");
       return;
     }
 
@@ -571,9 +787,14 @@ export default function AgendaPage() {
         notes: newAppointment.notes.trim(),
         professional: newAppointment.professional.trim(),
         status: newAppointment.status,
+        paymentMethod: isBlockedSlot ? "" : newAppointment.paymentMethod.trim(),
+        installments:
+          !isBlockedSlot && newAppointment.paymentMethod === "cartao_credito"
+            ? newAppointment.installments?.trim()
+            : "",
       },
     ]);
-    setIsCreateModalOpen(false);
+    setIsCreateDrawerClosing(true);
   }
 
   function goToClientAppointment(apt: Appointment) {
@@ -593,6 +814,7 @@ export default function AgendaPage() {
       professional: normalizeProfessionalName(apt.professional),
       status: apt.status,
       canEditStatus: true,
+      paymentMethod: apt.paymentMethod,
     });
     const scrollToCard = () => {
       document.getElementById(`agenda-appt-${apt.id}`)?.scrollIntoView({
@@ -607,12 +829,16 @@ export default function AgendaPage() {
   function openAppointmentDetails(details: AppointmentDetails) {
     const savedUsage = details.appointmentId ? appointmentStockUsage[details.appointmentId] : undefined;
 
+    setIsDetailsDrawerClosing(false);
     setSelectedAppointmentDetails(details);
     setEditableStatus(details.status);
     setDetailsTab("status");
     setIsEditingAppointment(false);
     setEditAppointmentError("");
     setStockControlError("");
+    setIsEditDatePickerOpen(false);
+    setIsEditProfessionalSelectOpen(false);
+    setIsEditProcedureSelectOpen(false);
     setStockDraftByProductId(
       savedUsage
         ? Object.fromEntries(
@@ -629,6 +855,8 @@ export default function AgendaPage() {
       procedureValue: details.procedureValue || "",
       notes: details.notes || "",
       professional: details.professional,
+      paymentMethod: details.paymentMethod || "",
+      installments: details.installments || "",
     });
   }
 
@@ -639,6 +867,9 @@ export default function AgendaPage() {
 
     setIsEditingAppointment(true);
     setEditAppointmentError("");
+    setIsEditDatePickerOpen(false);
+    setIsEditProfessionalSelectOpen(false);
+    setIsEditProcedureSelectOpen(false);
     setEditAppointment({
       date: selectedAppointmentDetails.date,
       startTime: selectedAppointmentDetails.startTime,
@@ -648,6 +879,8 @@ export default function AgendaPage() {
       procedureValue: selectedAppointmentDetails.procedureValue || "",
       notes: selectedAppointmentDetails.notes || "",
       professional: selectedAppointmentDetails.professional,
+      paymentMethod: selectedAppointmentDetails.paymentMethod || "",
+      installments: selectedAppointmentDetails.installments || "",
     });
   }
 
@@ -671,6 +904,14 @@ export default function AgendaPage() {
       return;
     }
 
+    if (
+      editAppointment.paymentMethod === "cartao_credito" &&
+      (!editAppointment.installments?.trim() || Number(editAppointment.installments) <= 0)
+    ) {
+      setEditAppointmentError("Informe a quantidade de parcelas para o pagamento em crédito.");
+      return;
+    }
+
     const updatedPatientName = editAppointment.patient.trim();
 
     setAppointmentList((currentAppointments) =>
@@ -686,6 +927,9 @@ export default function AgendaPage() {
             procedureValue: editAppointment.procedureValue,
             notes: editAppointment.notes.trim(),
             professional: editAppointment.professional.trim(),
+            paymentMethod: editAppointment.paymentMethod.trim(),
+            installments:
+              editAppointment.paymentMethod === "cartao_credito" ? editAppointment.installments?.trim() : "",
           }
           : appointment
       )
@@ -702,6 +946,9 @@ export default function AgendaPage() {
           procedureValue: editAppointment.procedureValue,
           notes: editAppointment.notes.trim(),
           professional: editAppointment.professional.trim(),
+          paymentMethod: editAppointment.paymentMethod.trim(),
+          installments:
+            editAppointment.paymentMethod === "cartao_credito" ? editAppointment.installments?.trim() : "",
         }
         : currentDetails
     );
@@ -888,6 +1135,36 @@ export default function AgendaPage() {
   }, [weekStartDate, weekEndDate, viewMode]);
 
   useEffect(() => {
+    if (viewMode !== "month") {
+      return;
+    }
+
+    let isCancelled = false;
+
+    async function loadMonthlyCounts() {
+      try {
+        const monthKey = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, "0")}`;
+        const counts = await getMonthlyAppointmentCount(monthKey);
+
+        if (!isCancelled) {
+          setMonthlyCounts(counts);
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          setMonthlyCounts([]);
+        }
+        console.error("Erro ao buscar contagens mensais:", error);
+      }
+    }
+
+    void loadMonthlyCounts();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedDate, viewMode]);
+
+  useEffect(() => {
     if (viewMode !== "day" || !isSelectedDateToday || !scheduleScrollRef.current) {
       return;
     }
@@ -988,6 +1265,78 @@ export default function AgendaPage() {
   }, [isCreateDatePickerOpen]);
 
   useEffect(() => {
+    if (!isCreateProfessionalSelectOpen && !isCreateProcedureSelectOpen) {
+      return;
+    }
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+
+      if (createProfessionalSelectRef.current?.contains(target)) {
+        return;
+      }
+
+      if (createProcedureSelectRef.current?.contains(target)) {
+        return;
+      }
+
+      setIsCreateProfessionalSelectOpen(false);
+      setIsCreateProcedureSelectOpen(false);
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isCreateProcedureSelectOpen, isCreateProfessionalSelectOpen]);
+
+  useEffect(() => {
+    if (!isEditDatePickerOpen) {
+      return;
+    }
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (editDatePickerRef.current && !editDatePickerRef.current.contains(event.target as Node)) {
+        setIsEditDatePickerOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isEditDatePickerOpen]);
+
+  useEffect(() => {
+    if (!isEditProfessionalSelectOpen && !isEditProcedureSelectOpen) {
+      return;
+    }
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+
+      if (editProfessionalSelectRef.current?.contains(target)) {
+        return;
+      }
+
+      if (editProcedureSelectRef.current?.contains(target)) {
+        return;
+      }
+
+      setIsEditProfessionalSelectOpen(false);
+      setIsEditProcedureSelectOpen(false);
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isEditProcedureSelectOpen, isEditProfessionalSelectOpen]);
+
+  useEffect(() => {
     if (!clientSearchPopoverOpen || normalizedClientFilter.length < 2) {
       return;
     }
@@ -1025,30 +1374,43 @@ export default function AgendaPage() {
     const selectedCreateDate = new Date(`${newAppointment.date}T00:00:00`);
     return selectedCreateDate.toLocaleDateString("pt-BR");
   }, [newAppointment.date]);
+  const formattedEditAppointmentDate = useMemo(() => {
+    if (!editAppointment.date) {
+      return "Selecionar data";
+    }
+
+    const selectedEditDate = new Date(`${editAppointment.date}T00:00:00`);
+    return selectedEditDate.toLocaleDateString("pt-BR");
+  }, [editAppointment.date]);
 
   return (
     <div className="min-h-screen">
         <div className="flex flex-col gap-4 pb-6 lg:flex-row lg:items-center lg:justify-between bg-slate-100">
-          <div>
-            <div className="flex items-center gap-2">
-              <CalendarClockIcon className="h-8 w-8 shrink-0 text-blue-600" aria-hidden />
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight text-slate-800">Agendamentos</h1>
-                
-              </div>
-            </div>
+        <div>
+          <div className="flex items-center gap-3">
+            <span
+              className="flex h-11 w-11 shrink-0 items-center justify-center text-purple-600 sm:h-12 sm:w-12"
+              aria-hidden
+            >
+              <CalendarClockIcon className="h-6 w-6 sm:h-7 sm:w-7" strokeWidth={2} />
+            </span>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Agendamentos</h1>
           </div>
+          <p className="mt-2 text-sm text-slate-500 sm:mt-3 sm:text-base">
+            Gerencie os agendamentos e históricos da clínica
+          </p>
+        </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              className="group flex items-center gap-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-300/50 transition-colors hover:bg-blue-700"
+              className="group flex items-center gap-1 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-purple-300/50 transition-colors hover:bg-purple-700"
               onClick={openCreateAppointmentModal}
             >
               <span className="relative h-4 w-4">
                 <PlusIcon className="absolute inset-0 h-4 w-4 text-white transition-all duration-300 group-hover:-rotate-90 group-hover:scale-75 group-hover:opacity-0" />
                 <MinusIcon className="absolute inset-0 h-4 w-4 text-white opacity-0 transition-all duration-300 group-hover:rotate-0 group-hover:scale-100 group-hover:opacity-100" />
               </span>
-              <span className="text-sm font-semibold text-white">Novo Agendamento</span>
+              <span className="text-sm font-semibold text-white">Criar Agendamento</span>
             </button>
           </div>
         </div>
@@ -1060,22 +1422,22 @@ export default function AgendaPage() {
             <div className="relative min-w-0 shrink-0 sm:min-w-[12rem] sm:max-w-[min(20rem,calc(100vw-8rem))]" ref={datePickerRef}>
                 <button
                   type="button"
-                  className={`flex w-full min-w-0 cursor-pointer items-center justify-center gap-2 rounded-lg border px-2.5 py-2 text-center shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:px-3 ${
+                  className={`flex w-full min-w-0 cursor-pointer items-center justify-center gap-2 rounded-lg border px-2.5 py-2 text-center shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 sm:px-3 ${
                     isDatePickerOpen
-                      ? "border-blue-400 bg-white ring-1 ring-blue-200"
-                      : "border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/60 hover:shadow-md active:scale-[0.99]"
+                      ? "border-purple-400 bg-white ring-1 ring-purple-200"
+                      : "border-slate-200 bg-white hover:border-purple-300 hover:bg-purple-50/60 hover:shadow-md active:scale-[0.99]"
                   }`}
                   onClick={openDatePicker}
                   aria-label="Abrir calendário e escolher data"
                   aria-expanded={isDatePickerOpen}
                 >
-                  <CalendarIcon className="h-4 w-4 shrink-0 text-blue-600 sm:h-5 sm:w-5" aria-hidden />
+                  <CalendarIcon className="h-4 w-4 shrink-0 text-purple-600 sm:h-5 sm:w-5" aria-hidden />
                   <span className="min-w-0 truncate text-center text-sm font-bold capitalize tracking-tight text-slate-800 sm:text-base">
                     {headerTitle}
                   </span>
                   <ChevronDown
                     className={`h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform sm:h-4 sm:w-4 ${
-                      isDatePickerOpen ? "rotate-180 text-blue-600" : ""
+                      isDatePickerOpen ? "rotate-180 text-purple-600" : ""
                     }`}
                     aria-hidden
                   />
@@ -1089,7 +1451,7 @@ export default function AgendaPage() {
                     ref={datePickerPopoverRef}
                     role="dialog"
                     aria-label="Calendário"
-                    className="fixed w-80 max-w-[min(20rem,calc(100vw-1rem))] rounded-2xl border border-blue-100 bg-white p-3 shadow-xl shadow-slate-300/40"
+                    className="fixed w-80 max-w-[min(20rem,calc(100vw-1rem))] rounded-2xl border border-purple-100 bg-white p-3 shadow-xl shadow-slate-300/40"
                     style={{
                       top: datePickerPopoverStyle.top,
                       left: datePickerPopoverStyle.left,
@@ -1099,7 +1461,7 @@ export default function AgendaPage() {
                     <div className="mb-3 flex items-center justify-between">
                       <button
                         type="button"
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-blue-50 hover:text-blue-700"
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-purple-50 hover:text-purple-700"
                         onClick={() => setDatePickerMonth((current) => addMonths(current, -1))}
                         aria-label="Mês anterior"
                       >
@@ -1113,7 +1475,7 @@ export default function AgendaPage() {
                       </p>
                       <button
                         type="button"
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-blue-50 hover:text-blue-700"
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-purple-50 hover:text-purple-700"
                         onClick={() => setDatePickerMonth((current) => addMonths(current, 1))}
                         aria-label="Próximo mês"
                       >
@@ -1137,11 +1499,11 @@ export default function AgendaPage() {
                             type="button"
                             className={`h-9 rounded-lg text-sm font-semibold transition ${
                               isSelected
-                                ? "bg-blue-600 text-white"
+                                ? "bg-purple-600 text-white"
                                 : isToday
-                                  ? "bg-blue-50 text-blue-700"
+                                  ? "bg-purple-50 text-purple-700"
                                   : isCurrentMonth
-                                    ? "text-slate-700 hover:bg-blue-50"
+                                    ? "text-slate-700 hover:bg-purple-50"
                                     : "text-slate-300 hover:bg-slate-50"
                             }`}
                             onClick={() => {
@@ -1177,7 +1539,7 @@ export default function AgendaPage() {
                 role="tab"
                 aria-selected={viewMode === "day"}
                 className={`relative z-10 rounded-md px-3 py-1.5 text-sm transition-colors duration-200 ${
-                  viewMode === "day" ? "font-semibold text-blue-600" : "text-slate-500 hover:text-slate-800"
+                  viewMode === "day" ? "font-semibold text-purple-600" : "text-slate-500 hover:text-slate-800"
                 }`}
                 onClick={() => setViewMode("day")}
               >
@@ -1188,7 +1550,7 @@ export default function AgendaPage() {
                 role="tab"
                 aria-selected={viewMode === "week"}
                 className={`relative z-10 rounded-md px-3 py-1.5 text-sm transition-colors duration-200 ${
-                  viewMode === "week" ? "font-semibold text-blue-600" : "text-slate-500 hover:text-slate-800"
+                  viewMode === "week" ? "font-semibold text-purple-600" : "text-slate-500 hover:text-slate-800"
                 }`}
                 onClick={() => setViewMode("week")}
               >
@@ -1199,7 +1561,7 @@ export default function AgendaPage() {
                 role="tab"
                 aria-selected={viewMode === "month"}
                 className={`relative z-10 rounded-md px-3 py-1.5 text-sm transition-colors duration-200 ${
-                  viewMode === "month" ? "font-semibold text-blue-600" : "text-slate-500 hover:text-slate-800"
+                  viewMode === "month" ? "font-semibold text-purple-600" : "text-slate-500 hover:text-slate-800"
                 }`}
                 onClick={() => setViewMode("month")}
               >
@@ -1233,7 +1595,7 @@ export default function AgendaPage() {
                 <div
                   id="client-day-matches"
                   role="listbox"
-                  className="absolute left-0 top-full z-[90] mt-1 w-[min(100vw-2rem,22rem)] rounded-xl border border-blue-100 bg-white py-2 shadow-xl shadow-slate-200/80"
+                  className="absolute left-0 top-full z-[90] mt-1 w-[min(100vw-2rem,22rem)] rounded-xl border border-purple-100 bg-white py-2 shadow-xl shadow-slate-200/80"
                 >
                   <p className="border-b border-slate-100 px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                     No dia {selectedDate.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" })}
@@ -1243,10 +1605,10 @@ export default function AgendaPage() {
                       <li key={apt.id} role="option">
                         <button
                           type="button"
-                          className="flex w-full flex-col gap-0.5 px-3 py-2.5 text-left transition hover:bg-blue-50"
+                          className="flex w-full flex-col gap-0.5 px-3 py-2.5 text-left transition hover:bg-purple-50"
                           onClick={() => goToClientAppointment(apt)}
                         >
-                          <span className="text-xs font-bold text-blue-700">
+                          <span className="text-xs font-bold text-purple-700">
                             {apt.startTime} – {apt.endTime}
                           </span>
                           <span className="text-sm font-semibold text-slate-800">{apt.patient}</span>
@@ -1287,7 +1649,7 @@ export default function AgendaPage() {
                   <button
                     type="button"
                     className={`mb-2 flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm ${selectedProfessionals.length === 0
-                        ? "bg-blue-50 font-semibold text-blue-700"
+                        ? "bg-purple-50 font-semibold text-purple-700"
                         : "text-slate-600 hover:bg-slate-50"
                       }`}
                     onClick={() => setSelectedProfessionals([])}
@@ -1308,7 +1670,7 @@ export default function AgendaPage() {
                         >
                           <input
                             type="checkbox"
-                            className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                            className="h-4 w-4 rounded border-slate-300 text-purple-600"
                             checked={isSelected}
                             onChange={() =>
                               setSelectedProfessionals((current) =>
@@ -1404,6 +1766,7 @@ export default function AgendaPage() {
                             professional: event.professional,
                             status: event.status,
                             canEditStatus: Boolean(event.canEditStatus && event.appointmentId),
+                            paymentMethod: event.paymentMethod,
                           })
                         }
                       />
@@ -1447,13 +1810,13 @@ export default function AgendaPage() {
                   return (
                     <div
                       key={`${toDateKey(day)}-${index}`}
-                      className={`border-b border-r border-slate-200 px-2 py-3 text-center last:border-r-0 ${isToday ? "bg-indigo-50" : ""
+                      className={`border-b border-r border-slate-200 px-2 py-3 text-center last:border-r-0 ${isToday ? "bg-purple-50" : ""
                         }`}
                     >
-                      <p className={`text-xs font-semibold ${isToday ? "text-indigo-500" : "text-slate-400"}`}>
+                      <p className={`text-xs font-semibold ${isToday ? "text-purple-500" : "text-slate-400"}`}>
                         {weekDayLabels[index]}
                       </p>
-                      <p className={`text-3xl font-bold leading-none ${isToday ? "text-indigo-600" : "text-slate-800"}`}>
+                      <p className={`text-3xl font-bold leading-none ${isToday ? "text-purple-600" : "text-slate-800"}`}>
                         {day.getDate()}
                       </p>
                     </div>
@@ -1521,6 +1884,7 @@ export default function AgendaPage() {
                                   professional: event.professional,
                                   status: event.status,
                                   canEditStatus: Boolean(event.canEditStatus && event.appointmentId),
+                                  paymentMethod: event.paymentMethod,
                                 })
                               }
                             />
@@ -1563,7 +1927,9 @@ export default function AgendaPage() {
               <div className="grid grid-cols-7">
                 {monthGridDays.map((day) => {
                   const dayKey = toDateKey(day);
+                  const apiCount = monthlyCountMap[dayKey] ?? 0;
                   const dayAppointments = monthlyAppointmentsByDate[dayKey] ?? [];
+                  const displayCount = Math.max(apiCount, dayAppointments.length);
                   const isToday = dayKey === todayKey;
                   const isOutsideCurrentMonth = day.getMonth() !== monthStartDate.getMonth();
                   const isSelectedDay = dayKey === selectedDateKey;
@@ -1573,7 +1939,7 @@ export default function AgendaPage() {
                       key={dayKey}
                       type="button"
                       className={`flex min-h-[128px] flex-col items-start justify-start border-b border-r border-slate-200 px-2.5 py-2 text-left align-top transition hover:bg-slate-50 ${isOutsideCurrentMonth ? "bg-slate-50/70" : "bg-white"
-                        } ${isSelectedDay ? "ring-1 ring-inset ring-indigo-200" : ""}`}
+                        } ${isSelectedDay ? "ring-1 ring-inset ring-purple-200" : ""}`}
                       onClick={() => {
                         setSelectedDate(day);
                         setViewMode("day");
@@ -1581,7 +1947,7 @@ export default function AgendaPage() {
                     >
                       <p
                         className={`mb-1.5 text-sm font-semibold ${isToday
-                            ? "text-indigo-600 underline underline-offset-2"
+                            ? "text-purple-600 underline underline-offset-2"
                             : isOutsideCurrentMonth
                               ? "text-slate-300"
                               : "text-slate-700"
@@ -1590,16 +1956,43 @@ export default function AgendaPage() {
                         {String(day.getDate()).padStart(2, "0")}
                       </p>
 
-                      {dayAppointments.length > 0 ? (
-                        <span className="mt-1.5 flex h-5 items-center rounded bg-indigo-100 px-2 text-[11px] font-medium text-indigo-700">
-                          {dayAppointments.length}{" "}
-                          {dayAppointments.length === 1 ? "agendamento" : "agendamentos"}
+                      {displayCount > 0 ? (
+                        <span className="mt-1.5 flex h-5 items-center rounded bg-purple-100 px-2 text-[11px] font-medium text-purple-700">
+                          {displayCount}{" "}
+                          {displayCount === 1 ? "agendamento" : "agendamentos"}
                         </span>
                       ) : null}
                     </button>
                   );
                 })}
               </div>
+
+              {newAppointment.paymentMethod === "cartao_credito" && (
+                <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 ml-1">
+                    Parcelamento
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="1"
+                      max="12"
+                      placeholder="Quantidade de parcelas (ex: 3)"
+                      className="h-10 w-full rounded-xl border border-purple-200 bg-white px-4 text-sm font-bold text-slate-700 outline-none ring-purple-100 transition-all focus:border-purple-400 focus:ring-4 sm:h-11 sm:text-base"
+                      value={newAppointment.installments}
+                      onChange={(event) =>
+                        setNewAppointment((current) => ({
+                          ...current,
+                          installments: event.target.value,
+                        }))
+                      }
+                    />
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-purple-400 uppercase tracking-widest">
+                      vezes
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1607,19 +2000,30 @@ export default function AgendaPage() {
 
       {selectedAppointmentDetails ? (
         <div
-          className="fixed inset-0 z-50 flex justify-end bg-slate-900/35 backdrop-blur-[1px]"
-          onClick={() => setSelectedAppointmentDetails(null)}
+          className={`fixed inset-0 z-50 flex justify-end bg-slate-900/35 backdrop-blur-[1px] ${
+            isDetailsDrawerClosing ? "prof-drawer-backdrop-leave" : "prof-drawer-backdrop-enter"
+          }`}
+          onClick={() => setIsDetailsDrawerClosing(true)}
         >
           <div
-            className="flex h-full w-full max-w-md flex-col border-l border-blue-100 bg-white shadow-2xl shadow-blue-200/60"
+            className={`flex h-full w-full max-w-md flex-col border-l border-purple-100 bg-white shadow-2xl shadow-purple-200/60 ${
+              isDetailsDrawerClosing ? "prof-drawer-aside-leave" : "prof-drawer-aside-enter"
+            }`}
             onClick={(event) => event.stopPropagation()}
+            onAnimationEnd={(e) => {
+              if (!isDetailsDrawerClosing || e.animationName !== "prof-drawer-leave") return;
+              setSelectedAppointmentDetails(null);
+              setIsDetailsDrawerClosing(false);
+            }}
           >
             <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
-              <h3 className="text-2xl font-bold text-slate-800">Detalhes do Agendamento</h3>
+              <h3 className="text-2xl font-bold text-slate-800">
+                {isEditingAppointment ? "Editar Agendamento" : "Detalhes do Agendamento"}
+              </h3>
               <button
                 type="button"
                 className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                onClick={() => setSelectedAppointmentDetails(null)}
+                onClick={() => setIsDetailsDrawerClosing(true)}
                 aria-label="Fechar detalhes"
               >
                 <X className="h-5 w-5" />
@@ -1628,359 +2032,733 @@ export default function AgendaPage() {
 
             <div className="flex-1 space-y-5 overflow-y-auto bg-slate-50 px-5 py-5 text-sm text-slate-700">
               {isEditingAppointment ? (
-                <div className="rounded-xl bg-white p-4 shadow-sm">
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">
-                    Editar agendamento
-                  </p>
-                  <div className="space-y-3">
-                    <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-                      Cliente
+                <div className="space-y-6">
+                  <label className="block text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
+                    Paciente
+                    <div className="mt-2 flex h-10 items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 transition-all focus-within:border-purple-400 focus-within:bg-white focus-within:ring-1 focus-within:ring-purple-100 sm:h-11">
+                      <UserSearch className="h-5 w-5 text-slate-400" />
                       <input
                         type="text"
-                        className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none"
+                        className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                        placeholder="Nome do paciente"
                         value={editAppointment.patient}
-                        onChange={(event) =>
-                          setEditAppointment((current) => ({ ...current, patient: event.target.value }))
-                        }
+                        onChange={(e) => setEditAppointment(curr => ({ ...curr, patient: e.target.value }))}
                       />
-                    </label>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-                        Procedimento
-                        <select
-                          className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none"
-                          value={editAppointment.procedure}
-                          onChange={(event) =>
-                            setEditAppointment((current) => ({ ...current, procedure: event.target.value }))
-                          }
-                        >
-                          {procedureOptions.map((procedure) => (
-                            <option key={procedure} value={procedure}>
-                              {procedure}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-                        Profissional
-                        <select
-                          className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none"
-                          value={editAppointment.professional}
-                          onChange={(event) =>
-                            setEditAppointment((current) => ({ ...current, professional: event.target.value }))
-                          }
-                        >
-                          {professionalOptions.map((professional) => (
-                            <option key={professional} value={professional}>
-                              {professional}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
                     </div>
-                    <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-                      Valor do procedimento
+                  </label>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
+                      <p>Profissional</p>
+                      <div className="relative mt-2" ref={editProfessionalSelectRef}>
+                        <button
+                          type="button"
+                          aria-expanded={isEditProfessionalSelectOpen}
+                          onClick={() => {
+                            setIsEditProfessionalSelectOpen((current) => !current);
+                            setIsEditProcedureSelectOpen(false);
+                          }}
+                          className={`flex h-10 w-full items-center justify-between gap-3 rounded-lg border px-3 text-left text-sm transition sm:h-11 sm:text-base ${
+                            isEditProfessionalSelectOpen
+                              ? "border-purple-400 bg-white ring-1 ring-purple-100"
+                              : "border-slate-200 bg-slate-50 hover:border-purple-300 hover:bg-purple-50/40"
+                          }`}
+                        >
+                          <span className="flex min-w-0 items-center gap-3">
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple-100 text-purple-600">
+                              <UserIcon className="h-4 w-4" />
+                            </span>
+                            <span className="min-w-0">
+                              <span
+                                className={`block truncate font-medium ${
+                                  editAppointment.professional ? "text-slate-800" : "text-slate-400"
+                                }`}
+                              >
+                                {editAppointment.professional || "Selecione o profissional"}
+                              </span>
+                            </span>
+                          </span>
+                          <ChevronDown
+                            className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${
+                              isEditProfessionalSelectOpen ? "rotate-180 text-purple-600" : ""
+                            }`}
+                          />
+                        </button>
+                        {isEditProfessionalSelectOpen ? (
+                          <div className="absolute left-0 top-full z-30 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-purple-100 bg-white p-2 shadow-lg">
+                            {createProfessionalOptions.map((professional) => {
+                              const isActive = professional === editAppointment.professional;
+
+                              return (
+                                <button
+                                  key={professional}
+                                  type="button"
+                                  onClick={() => {
+                                    setEditAppointment((current) => ({ ...current, professional }));
+                                    setIsEditProfessionalSelectOpen(false);
+                                  }}
+                                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
+                                    isActive
+                                      ? "bg-purple-50 text-purple-700"
+                                      : "text-slate-700 hover:bg-slate-50"
+                                  }`}
+                                >
+                                  <span
+                                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                                      isActive ? "bg-purple-100 text-purple-600" : "bg-slate-100 text-slate-500"
+                                    }`}
+                                  >
+                                    <UserIcon className="h-4 w-4" />
+                                  </span>
+                                  <span className="min-w-0 truncate text-sm font-medium normal-case">
+                                    {professional}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
+                      <p>Procedimento</p>
+                      <div className="relative mt-2" ref={editProcedureSelectRef}>
+                        <button
+                          type="button"
+                          aria-expanded={isEditProcedureSelectOpen}
+                          onClick={() => {
+                            setIsEditProcedureSelectOpen((current) => !current);
+                            setIsEditProfessionalSelectOpen(false);
+                          }}
+                          className={`flex h-10 w-full items-center justify-between gap-3 rounded-lg border px-3 text-left text-sm transition sm:h-11 sm:text-base ${
+                            isEditProcedureSelectOpen
+                              ? "border-purple-400 bg-white ring-1 ring-purple-100"
+                              : "border-slate-200 bg-slate-50 hover:border-purple-300 hover:bg-purple-50/40"
+                          }`}
+                        >
+                          <span className="flex min-w-0 items-center gap-3">
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple-100 text-purple-600">
+                              <InfoIcon className="h-4 w-4" />
+                            </span>
+                            <span className="min-w-0">
+                              <span
+                                className={`block truncate font-medium ${
+                                  editAppointment.procedure ? "text-slate-800" : "text-slate-400"
+                                }`}
+                              >
+                                {editAppointment.procedure || "Selecione o procedimento"}
+                              </span>
+                            </span>
+                          </span>
+                          <ChevronDown
+                            className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${
+                              isEditProcedureSelectOpen ? "rotate-180 text-purple-600" : ""
+                            }`}
+                          />
+                        </button>
+                        {isEditProcedureSelectOpen ? (
+                          <div className="absolute left-0 top-full z-30 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-purple-100 bg-white p-2 shadow-lg">
+                            {procedureOptions.map((procedure) => {
+                              const isActive = procedure === editAppointment.procedure;
+
+                              return (
+                                <button
+                                  key={procedure}
+                                  type="button"
+                                  onClick={() => {
+                                    setEditAppointment((current) => ({ ...current, procedure }));
+                                    setIsEditProcedureSelectOpen(false);
+                                  }}
+                                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
+                                    isActive
+                                      ? "bg-purple-50 text-purple-700"
+                                      : "text-slate-700 hover:bg-slate-50"
+                                  }`}
+                                >
+                                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple-100 text-purple-600">
+                                    <InfoIcon className="h-4 w-4" />
+                                  </span>
+                                  <span className="min-w-0 truncate text-sm font-medium normal-case">
+                                    {procedure}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
+                      Data
+                      <div className="relative mt-2" ref={editDatePickerRef}>
+                        <button
+                          type="button"
+                          className={`flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-left text-sm font-medium shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 ${
+                            isEditDatePickerOpen
+                              ? "border-purple-400 ring-1 ring-purple-200 bg-white"
+                              : "text-slate-700 hover:border-purple-300 hover:bg-purple-50/50 hover:shadow-md active:scale-[0.995]"
+                          }`}
+                          onClick={openEditDatePicker}
+                          aria-label="Selecionar data do agendamento"
+                          aria-expanded={isEditDatePickerOpen}
+                        >
+                          <span className="inline-flex min-w-0 items-center gap-2">
+                            <CalendarIcon className="h-5 w-5 shrink-0 text-purple-600" aria-hidden />
+                            <span
+                              className={`whitespace-nowrap ${
+                                editAppointment.date ? "text-slate-800" : "text-slate-400"
+                              }`}
+                            >
+                              {formattedEditAppointmentDate}
+                            </span>
+                          </span>
+                          <ChevronDown
+                            className={`h-4 w-4 shrink-0 text-slate-500 ${
+                              isEditDatePickerOpen ? "rotate-180 text-purple-600" : ""
+                            }`}
+                            aria-hidden
+                          />
+                        </button>
+                        {isEditDatePickerOpen ? (
+                          <div className="absolute left-0 top-full z-40 mt-2 w-80 rounded-2xl border border-purple-100 bg-white p-3 shadow-lg">
+                            <div className="mb-3 flex items-center justify-between">
+                              <button
+                                type="button"
+                                className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-purple-50 hover:text-purple-700"
+                                onClick={() => setEditDatePickerMonth((current) => addMonths(current, -1))}
+                                aria-label="Mês anterior"
+                              >
+                                <ChevronLeft className="h-4 w-4" />
+                              </button>
+                              <p className="text-sm font-semibold capitalize text-slate-800">
+                                {editDatePickerMonth.toLocaleDateString("pt-BR", {
+                                  month: "long",
+                                  year: "numeric",
+                                })}
+                              </p>
+                              <button
+                                type="button"
+                                className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-purple-50 hover:text-purple-700"
+                                onClick={() => setEditDatePickerMonth((current) => addMonths(current, 1))}
+                                aria-label="Próximo mês"
+                              >
+                                <ChevronRight className="h-4 w-4" />
+                              </button>
+                            </div>
+
+                            <div className="mb-2 grid grid-cols-7 gap-1 text-center text-[11px] font-semibold tracking-[0.08em] text-slate-400">
+                              {monthDayLabels.map((label) => (
+                                <span key={`edit-picker-${label}`}>{label}</span>
+                              ))}
+                            </div>
+
+                            <div className="grid grid-cols-7 gap-1">
+                              {editDatePickerGridDays.map((day) => {
+                                const dayKey = toDateKey(day);
+                                const isCurrentMonth = day.getMonth() === editDatePickerMonth.getMonth();
+                                const isSelected = dayKey === editAppointment.date;
+                                const isToday = dayKey === todayKey;
+
+                                return (
+                                  <button
+                                    key={`edit-picker-day-${dayKey}`}
+                                    type="button"
+                                    className={`h-9 rounded-lg text-sm font-semibold transition ${
+                                      isSelected
+                                        ? "bg-purple-600 text-white"
+                                        : isToday
+                                          ? "bg-purple-50 text-purple-700"
+                                          : isCurrentMonth
+                                            ? "text-slate-700 hover:bg-purple-50"
+                                            : "text-slate-300 hover:bg-slate-50"
+                                    }`}
+                                    onClick={() => {
+                                      setEditAppointment((current) => ({ ...current, date: dayKey }));
+                                      setIsEditDatePickerOpen(false);
+                                    }}
+                                  >
+                                    {String(day.getDate()).padStart(2, "0")}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    </label>
+
+                    <label className="block text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
+                      Valor
                       <input
                         type="text"
                         inputMode="numeric"
-                        className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none"
+                        className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-purple-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-purple-100 sm:h-11 sm:text-base"
                         placeholder="R$ 0,00"
                         value={editAppointment.procedureValue}
-                        onChange={(event) =>
-                          setEditAppointment((current) => ({
-                            ...current,
-                            procedureValue: formatCurrencyInput(event.target.value),
-                          }))
-                        }
+                        onChange={(e) => setEditAppointment(curr => ({ ...curr, procedureValue: formatCurrencyInput(e.target.value) }))}
                       />
                     </label>
-                    <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-                      Observações
-                      <textarea
-                        className="mt-1.5 h-20 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none"
-                        placeholder="Observações adicionais..."
-                        value={editAppointment.notes}
-                        onChange={(event) =>
-                          setEditAppointment((current) => ({ ...current, notes: event.target.value }))
-                        }
-                      />
-                    </label>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <label className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-                        Data
-                        <div className="relative mt-1.5">
-                          <CalendarIcon
-                            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-blue-600"
-                            aria-hidden
-                          />
-                          <input
-                            type="date"
-                            className="w-full cursor-pointer rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm font-medium text-slate-800 shadow-sm outline-none transition hover:border-blue-300 hover:bg-blue-50/30 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30"
-                            value={editAppointment.date}
-                            onChange={(event) =>
-                              setEditAppointment((current) => ({ ...current, date: event.target.value }))
+                  </div>
+
+                  <div className="block text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
+                    <p className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
+                      Forma de pagamento
+                    </p>
+                    <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                      {paymentMethodOptions.map((option) => {
+                        const Icon = option.icon;
+                        const isSelected = editAppointment.paymentMethod === option.value;
+
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            aria-pressed={isSelected}
+                            onClick={() =>
+                              setEditAppointment((current) => ({
+                                ...current,
+                                paymentMethod: current.paymentMethod === option.value ? "" : option.value,
+                                installments:
+                                  option.value === "cartao_credito" && current.paymentMethod !== option.value
+                                    ? current.installments
+                                    : "",
+                              }))
                             }
-                          />
+                            className={`group relative flex items-center gap-3 overflow-hidden rounded-xl border px-4 py-3 text-left normal-case transition-all duration-300 ${
+                              isSelected
+                                ? "scale-[1.02] border-purple-400 bg-purple-50 text-purple-700 shadow-md shadow-purple-100 ring-2 ring-purple-200/70"
+                                : "border-slate-200 bg-slate-50 text-slate-700 hover:-translate-y-0.5 hover:border-purple-300 hover:bg-purple-50/60 hover:shadow-sm"
+                            }`}
+                          >
+                            <span
+                              className={`absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-700 ${
+                                isSelected ? "translate-x-full" : "-translate-x-full group-hover:translate-x-full"
+                              }`}
+                              aria-hidden
+                            />
+                            <span
+                              className={`relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all duration-300 ${
+                                isSelected
+                                  ? "bg-purple-100 text-purple-600 scale-110"
+                                  : "bg-white text-slate-500 group-hover:scale-105"
+                              }`}
+                            >
+                              <Icon className={`h-5 w-5 transition-transform duration-300 ${isSelected ? "rotate-6" : ""}`} />
+                            </span>
+                            <span className="relative z-10 min-w-0">
+                              <span className="block text-sm font-semibold">{option.label}</span>
+                              <span className="block text-xs font-medium text-slate-500">{option.hint}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {editAppointment.paymentMethod === "cartao_credito" && (
+                    <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 ml-1">
+                        Parcelamento
+                      </label>
+                      <div className="group relative flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 transition-all focus-within:border-purple-400 focus-within:bg-white focus-within:ring-4 focus-within:ring-purple-100/50">
+                        <input
+                          type="number"
+                          min="1"
+                          max="12"
+                          placeholder="Quantidade de parcelas (ex: 3)"
+                          className="w-full bg-transparent text-sm font-bold text-slate-700 outline-none placeholder:text-slate-400"
+                          value={editAppointment.installments}
+                          onChange={(e) => setEditAppointment(curr => ({ ...curr, installments: e.target.value }))}
+                        />
+                        <div className="text-[10px] font-black text-purple-400 uppercase tracking-widest">
+                          vezes
                         </div>
-                      </label>
-                      <label className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-                        Início
-                        <input
-                          type="time"
-                          className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none"
-                          value={editAppointment.startTime}
-                          onChange={(event) =>
-                            setEditAppointment((current) => ({ ...current, startTime: event.target.value }))
-                          }
-                        />
-                      </label>
-                      <label className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-                        Término
-                        <input
-                          type="time"
-                          className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none"
-                          value={editAppointment.endTime}
-                          onChange={(event) =>
-                            setEditAppointment((current) => ({ ...current, endTime: event.target.value }))
-                          }
-                        />
-                      </label>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-xl bg-white p-4 shadow-sm flex items-center gap-2">
-                  <UserIcon className="h-4 w-4 text-blue-600" />
-                  <p className="text-lg font-bold text-slate-800">{selectedAppointmentDetails.patient}</p>
-                  <p className="mt-1 text-sm text-blue-700">{selectedAppointmentDetails.procedure}</p>
-                </div>
-              )}
-
-              <div className="rounded-xl border border-slate-200 bg-white p-1">
-                <button
-                  type="button"
-                  className={`w-1/2 rounded-lg px-3 py-2 text-sm font-semibold ${detailsTab === "status"
-                      ? "bg-indigo-50 text-indigo-700"
-                      : "text-slate-600 hover:bg-slate-50"
-                    }`}
-                  onClick={() => setDetailsTab("status")}
-                >
-                  Status
-                </button>
-                <button
-                  type="button"
-                  className={`w-1/2 rounded-lg px-3 py-2 text-sm font-semibold ${detailsTab === "estoque"
-                      ? "bg-indigo-50 text-indigo-700"
-                      : "text-slate-600 hover:bg-slate-50"
-                    }`}
-                  onClick={() => setDetailsTab("estoque")}
-                >
-                  Estoque {selectedStockItemsCount > 0 ? `(${selectedStockItemsCount})` : ""}
-                </button>
-              </div>
-
-              {detailsTab === "status" ? (
-                <div className="rounded-xl bg-white p-4 shadow-sm">
-                  <div className="flex items-center gap-2 mb-3">
-                    <InfoIcon className="h-4 w-4 text-blue-600" />
-                    <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">
-                      Informações da sessão
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="flex justify-between gap-3">
-                      <span className="text-slate-500 flex items-center gap-2"> <CalendarIcon className="h-4 w-4 text-blue-600" />Data</span>
-                      <span className="font-semibold text-slate-800">{selectedAppointmentDetails.date}</span>
-                    </p>
-                    <p className="flex justify-between gap-3">
-                      <span className="text-slate-500 flex items-center gap-2"> <Clock3 className="h-4 w-4 text-blue-600" />Horário</span>
-                      <span className="font-semibold text-slate-800">
-                        {selectedAppointmentDetails.startTime} - {selectedAppointmentDetails.endTime}
-                      </span>
-                    </p>
-                    <p className="flex justify-between gap-3">
-                      <span className="text-slate-500 flex items-center gap-2"> <UserIcon className="h-4 w-4 text-blue-600" />Profissional</span>
-                      <span className="font-semibold text-slate-800">
-                        {selectedAppointmentDetails.professional || "Não informado"}
-                      </span>
-                    </p>
-                    <p className="flex justify-between gap-3">
-                      <span className="text-slate-500 flex items-center gap-2"> <CoinsIcon className="h-4 w-4 text-blue-600" />Valor</span>
-                      <span className="font-semibold text-slate-800">
-                        {selectedAppointmentDetails.procedureValue || "Não informado"}
-                      </span>
-                    </p>
-                    <div className="rounded-lg bg-slate-50 px-3 py-2">
-                      <p className="text-slate-500">Observações</p>
-                      <p className="mt-1 text-sm text-slate-700">
-                        {selectedAppointmentDetails.notes?.trim() || "Sem observações."}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              {detailsTab === "status" ? (
-                <div className="rounded-xl bg-white p-4 shadow-sm">
-                  <div className="mb-3 flex items-center gap-2">
-                    <ChartNoAxesColumn className="h-4 w-4 text-blue-600" />
-                    <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Status</p>
-                  </div>
-                  <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700">
-                    <span className={`h-2.5 w-2.5 rounded-full ${statusDotColor(editableStatus)}`} />
-                    {statusLabel(editableStatus)}
-                  </div>
-                  {selectedAppointmentDetails.canEditStatus ? (
-                    <div className="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
-                      {appointmentStatusOptions.map((status) => (
-                        <button
-                          key={status}
-                          type="button"
-                          className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition ${statusOptionButtonStyles(
-                            status,
-                            editableStatus
-                          )}`}
-                          onClick={() => {
-                            setEditableStatus(status);
-                            setStockControlError("");
-                            if (status === "concluido") {
-                              setDetailsTab("estoque");
-                            }
-                          }}
-                          aria-pressed={editableStatus === status}
-                        >
-                          <span className={`h-2.5 w-2.5 rounded-full ${statusDotColor(status)}`} />
-                          {statusLabel(status)}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="rounded-lg bg-blue-50 px-3 py-2 font-semibold text-blue-900">
-                      {statusLabel(selectedAppointmentDetails.status)}
-                    </p>
                   )}
-                  {!selectedAppointmentDetails.canEditStatus ? (
-                    <p className="mt-2 text-xs text-blue-700">Este atendimento é apenas visualização.</p>
-                  ) : null}
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
+                      Início
+                      <div className="mt-2 flex h-10 items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-purple-400 focus-within:bg-slate-50 focus-within:ring-0 sm:h-11">
+                        <Clock4 className="h-5 w-5 text-slate-400" />
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={5}
+                          placeholder="08:30"
+                          className="h-full w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 sm:text-base"
+                          value={editAppointment.startTime}
+                          onChange={(e) => setEditAppointment(curr => ({ ...curr, startTime: formatTimeInput(e.target.value) }))}
+                        />
+                      </div>
+                    </label>
+                    <label className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
+                      Término
+                      <div className="mt-2 flex h-10 items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-purple-400 focus-within:bg-slate-50 focus-within:ring-0 sm:h-11">
+                        <Clock4 className="h-5 w-5 text-slate-400" />
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={5}
+                          placeholder="09:00"
+                          className="h-full w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 sm:text-base"
+                          value={editAppointment.endTime}
+                          onChange={(e) => setEditAppointment(curr => ({ ...curr, endTime: formatTimeInput(e.target.value) }))}
+                        />
+                      </div>
+                    </label>
+                  </div>
+
+                  <label className="block text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
+                    Observações
+                    <textarea
+                      className="mt-2 h-28 w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-base text-slate-700 outline-none placeholder:text-slate-400 focus:border-purple-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-purple-100"
+                      placeholder="Observações adicionais..."
+                      value={editAppointment.notes}
+                      onChange={(e) => setEditAppointment(curr => ({ ...curr, notes: e.target.value }))}
+                    />
+                  </label>
                 </div>
               ) : (
-                <div className="rounded-xl bg-white p-4 shadow-sm">
-                  <div className="mb-4 border-b border-slate-100 pb-4">
-                    <h4 className="text-2xl font-bold text-slate-800">Controle de estoque</h4>
-                    <p className="mt-1 text-base text-slate-500">
-                      Registre os itens utilizados neste atendimento
-                    </p>
+                <div className="space-y-5">
+                  {/* Card de Visualização Principal */}
+                  <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm overflow-hidden relative group">
+                    <div className="absolute top-0 left-0 w-1.5 h-full bg-purple-500" />
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-50 text-purple-600 ring-1 ring-purple-100">
+                        <UserIcon className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <h4 className="text-xl font-black text-slate-900 tracking-tight">{selectedAppointmentDetails.patient}</h4>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-emerald-600 ring-1 ring-inset ring-emerald-200/50">
+                            <CheckCircle2 className="h-3 w-3" /> {selectedAppointmentDetails.procedure}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-3">
-                    {stockProducts.map((product) => {
-                      const availableForThisAppointment =
-                        product.quantity + (selectedAppointmentStockUsage[product.id] ?? 0);
-                      const currentQuantity = stockDraftByProductId[product.id] ?? "";
-                      const isSelected = Number(currentQuantity) > 0;
 
-                      return (
-                        <div
-                          key={product.id}
-                          className="flex items-center justify-between gap-3 rounded-xl px-1 py-1.5 text-sm text-slate-700"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-xl">
-                              {product.icon}
+                  <div className="rounded-xl border border-slate-200 bg-white p-1">
+                    <button
+                      type="button"
+                      className={`w-1/2 rounded-lg px-3 py-2 text-sm font-semibold transition-all ${detailsTab === "status"
+                          ? "bg-purple-50 text-purple-700 shadow-sm"
+                          : "text-slate-600 hover:bg-slate-50"
+                        }`}
+                      onClick={() => setDetailsTab("status")}
+                    >
+                      Status
+                    </button>
+                    <button
+                      type="button"
+                      className={`w-1/2 rounded-lg px-3 py-2 text-sm font-semibold transition-all ${detailsTab === "estoque"
+                          ? "bg-purple-50 text-purple-700 shadow-sm"
+                          : "text-slate-600 hover:bg-slate-50"
+                        }`}
+                      onClick={() => setDetailsTab("estoque")}
+                    >
+                      Estoque {selectedStockItemsCount > 0 ? `(${selectedStockItemsCount})` : ""}
+                    </button>
+                  </div>
+
+                  {detailsTab === "status" ? (
+                    <div className="space-y-5">
+                      {/* Informações Detalhadas */}
+                      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="h-1 w-4 rounded-full bg-purple-500" />
+                          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                            Detalhes do Atendimento
+                          </p>
+                        </div>
+
+                        <div className="grid gap-6 sm:grid-cols-2">
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                              <CalendarIcon className="h-3 w-3 text-purple-500" /> Data
+                            </span>
+                            <p className="text-sm font-bold text-slate-700 ml-5">{selectedAppointmentDetails.date}</p>
+                          </div>
+
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                              <Clock3 className="h-3 w-3 text-purple-500" /> Horário
+                            </span>
+                            <p className="text-sm font-bold text-slate-700 ml-5">
+                              {selectedAppointmentDetails.startTime} - {selectedAppointmentDetails.endTime}
+                            </p>
+                          </div>
+
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                              <UserIcon className="h-3 w-3 text-purple-500" /> Profissional
+                            </span>
+                            <p className="text-sm font-bold text-slate-700 ml-5">
+                              {selectedAppointmentDetails.professional || "Não informado"}
+                            </p>
+                          </div>
+
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                              <CoinsIcon className="h-3 w-3 text-purple-500" /> Valor
+                            </span>
+                            <p className="text-sm font-bold text-emerald-600 ml-5">
+                              {selectedAppointmentDetails.procedureValue || "Não informado"}
+                            </p>
+                          </div>
+
+                          <div className="space-y-1 sm:col-span-2">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                              <CreditCard className="h-3 w-3 text-purple-500" /> Pagamento
+                            </span>
+                            <div className="ml-5 mt-1">
+                              {(() => {
+                                const option = paymentMethodOptions.find(
+                                  (o) => o.value === selectedAppointmentDetails.paymentMethod
+                                );
+                                const paymentLabel = paymentMethodLabel(selectedAppointmentDetails.paymentMethod);
+                                const hasPayment = paymentLabel !== "Não informado";
+                                const Icon = option?.icon ?? CreditCard;
+                                const isCreditPayment =
+                                  selectedAppointmentDetails.paymentMethod === "cartao_credito" ||
+                                  paymentLabel === "Cartão de Crédito";
+
+                                if (hasPayment) {
+                                  return (
+                                    <div className="flex items-center gap-3">
+                                      <span className="inline-flex items-center gap-1.5 rounded-xl bg-purple-50 px-3 py-1.5 text-[11px] font-bold text-purple-700 ring-1 ring-inset ring-purple-200/50">
+                                        <Icon className="h-3.5 w-3.5" />
+                                        {option?.label ?? paymentLabel}
+                                      </span>
+                                      {isCreditPayment && selectedAppointmentDetails.installments ? (
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-purple-400">
+                                          {selectedAppointmentDetails.installments}x sem juros
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  );
+                                }
+
+                                return (
+                                  <span className="text-sm font-bold text-slate-500 italic">Não informado</span>
+                                );
+                              })()}
                             </div>
-                            <div>
-                              <p className="text-base font-semibold text-slate-900">{product.name}</p>
-                              <p className="text-sm text-slate-500">
-                                {availableForThisAppointment} {product.unit} | {Number(currentQuantity || 0)} un.
-                                utilizados
+                          </div>
+
+                          <div className="space-y-1 sm:col-span-2">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                              <FileText className="h-3 w-3 text-purple-500" /> Observações
+                            </span>
+                            <div className="ml-5 mt-1 rounded-2xl bg-slate-50 p-4 border border-slate-100">
+                              <p className="text-sm font-medium text-slate-600 leading-relaxed">
+                                {selectedAppointmentDetails.notes?.trim() || "Nenhuma observação registrada."}
                               </p>
                             </div>
                           </div>
-                          <div className="flex items-center rounded-2xl border border-slate-200 bg-white px-2 py-1 shadow-sm">
-                            <button
-                              type="button"
-                              className="flex h-8 w-8 items-center justify-center rounded-full text-xl text-slate-500 hover:bg-slate-100"
-                              onClick={() => {
-                                const currentValue = Number(currentQuantity || 0);
-                                const nextValue = Math.max(0, currentValue - 1);
-                                handleStockDraftChange(product.id, nextValue > 0 ? String(nextValue) : "");
-                              }}
-                            >
-                              -
-                            </button>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              className="w-12 bg-transparent text-center text-xl font-semibold text-slate-800 outline-none"
-                              value={currentQuantity || 0}
-                              onChange={(event) => handleStockDraftChange(product.id, event.target.value)}
-                            />
-                            <button
-                              type="button"
-                              className="flex h-8 w-8 items-center justify-center rounded-full text-xl text-slate-500 hover:bg-slate-100"
-                              onClick={() => {
-                                const currentValue = Number(currentQuantity || 0);
-                                const nextValue = Math.min(availableForThisAppointment, currentValue + 1);
-                                handleStockDraftChange(product.id, String(nextValue));
-                              }}
-                            >
-                              +
-                            </button>
-                          </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                  <p className="mt-3 text-xs text-slate-500">
-                    Ao salvar como concluído, o estoque será baixado conforme os itens selecionados.
-                  </p>
+                      </div>
+
+                      {/* Status Selector */}
+                      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                        <div className="flex items-center gap-2">
+                          <ChartNoAxesColumn className="h-4 w-4 text-purple-600" />
+                          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Status do Agendamento</p>
+                        </div>
+                        <div className="flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700 border border-slate-100">
+                          <span className={`h-2 w-2 rounded-full ${statusDotColor(editableStatus)} shadow-[0_0_8px_rgba(0,0,0,0.1)]`} />
+                          {statusLabel(editableStatus)}
+                        </div>
+                        {selectedAppointmentDetails.canEditStatus ? (
+                          <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-100 bg-slate-50/50 p-2">
+                            {appointmentStatusOptions.map((status) => (
+                              <button
+                                key={status}
+                                type="button"
+                                className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold transition-all duration-200 ${statusOptionButtonStyles(
+                                  status,
+                                  editableStatus
+                                )}`}
+                                onClick={() => {
+                                  setEditableStatus(status);
+                                  setStockControlError("");
+                                  if (status === "concluido") {
+                                    setDetailsTab("estoque");
+                                  }
+                                }}
+                                aria-pressed={editableStatus === status}
+                              >
+                                <span className={`h-2 w-2 rounded-full ${statusDotColor(status)}`} />
+                                {statusLabel(status)}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="rounded-xl bg-purple-50/50 px-4 py-3 border border-purple-100/50">
+                            <p className="text-xs font-bold text-purple-900 leading-relaxed">
+                              {statusLabel(selectedAppointmentDetails.status)}
+                            </p>
+                            <p className="mt-1 text-[10px] font-medium text-purple-600 opacity-70">Este atendimento é apenas visualização.</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
+                      <div className="border-b border-slate-100 pb-4">
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="h-1 w-4 rounded-full bg-purple-500" />
+                          <h4 className="text-lg font-black text-slate-900 tracking-tight">CONTROLE DE ESTOQUE</h4>
+                        </div>
+                        <p className="text-xs font-medium text-slate-500">
+                          Registre os itens utilizados neste atendimento
+                        </p>
+                      </div>
+                      <div className="space-y-3">
+                        {stockProducts.map((product) => {
+                          const availableForThisAppointment =
+                            product.quantity + (selectedAppointmentStockUsage[product.id] ?? 0);
+                          const currentQuantity = stockDraftByProductId[product.id] ?? "";
+                          const isSelected = Number(currentQuantity) > 0;
+
+                          return (
+                            <div
+                              key={product.id}
+                              className={`flex items-center justify-between gap-3 rounded-2xl border p-3 transition-all duration-300 ${
+                                isSelected ? "border-purple-200 bg-purple-50/30" : "border-slate-100 hover:border-slate-200"
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-lg shadow-inner">
+                                  {product.icon}
+                                </div>
+                                <div>
+                                  <p className="text-sm font-bold text-slate-900">{product.name}</p>
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                    {availableForThisAppointment} {product.unit} disp.
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+                                <button
+                                  type="button"
+                                  className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-50 hover:text-purple-600 active:scale-90"
+                                  onClick={() => {
+                                    const currentValue = Number(currentQuantity || 0);
+                                    const nextValue = Math.max(0, currentValue - 1);
+                                    handleStockDraftChange(product.id, nextValue > 0 ? String(nextValue) : "");
+                                  }}
+                                >
+                                  <MinusIcon className="h-3 w-3" />
+                                </button>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  className="w-10 bg-transparent text-center text-sm font-black text-slate-700 outline-none"
+                                  value={currentQuantity || 0}
+                                  onChange={(event) => handleStockDraftChange(product.id, event.target.value)}
+                                />
+                                <button
+                                  type="button"
+                                  className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-50 hover:text-purple-600 active:scale-90"
+                                  onClick={() => {
+                                    const currentValue = Number(currentQuantity || 0);
+                                    const nextValue = Math.min(availableForThisAppointment, currentValue + 1);
+                                    handleStockDraftChange(product.id, String(nextValue));
+                                  }}
+                                >
+                                  <PlusIcon className="h-3 w-3" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="rounded-xl bg-slate-50 p-3 border border-slate-100">
+                        <p className="text-[10px] font-bold text-slate-500 leading-relaxed italic">
+                          * Ao salvar como concluído, o estoque será baixado conforme os itens selecionados.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
             {editAppointmentError ? (
-              <p className="px-5 pb-1 text-sm font-medium text-rose-600">{editAppointmentError}</p>
+              <p className="px-5 pb-1 text-sm font-bold text-rose-600 animate-pulse">{editAppointmentError}</p>
             ) : null}
             {stockControlError ? (
-              <p className="px-5 pb-1 text-sm font-medium text-rose-600">{stockControlError}</p>
+              <p className="px-5 pb-1 text-sm font-bold text-rose-600 animate-pulse">{stockControlError}</p>
             ) : null}
 
-            <div className="flex gap-2 border-t border-blue-100 bg-white px-5 py-4">
+            <div className="flex gap-2 border-t border-purple-100 bg-white px-5 py-4">
               {selectedAppointmentDetails.canEditStatus && !isEditingAppointment ? (
                 <button
                   type="button"
-                  className="flex-1 rounded-lg border bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-800"
+                  className="group relative flex-1 overflow-hidden rounded-lg bg-purple-600 px-3 py-2 text-sm font-semibold text-white shadow-lg shadow-purple-200 transition-all duration-300 hover:-translate-y-0.5 hover:bg-purple-700 hover:shadow-purple-300 active:scale-95"
                   onClick={handleUpdateAppointmentStatus}
                 >
-                  Salvar
+                  <span
+                    className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-700 group-hover:translate-x-full"
+                    aria-hidden
+                  />
+                  <span className="relative z-10 flex w-full items-center justify-center gap-2 text-center">
+                    <CheckCircle2 className="h-4 w-4 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6" />
+                    Salvar
+                  </span>
                 </button>
               ) : null}
               {selectedAppointmentDetails.canEditStatus && !isEditingAppointment ? (
                 <button
                   type="button"
-                  className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                  className="group relative flex-1 overflow-hidden rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-purple-300 hover:bg-purple-50 hover:text-purple-700 hover:shadow-md hover:shadow-purple-100 active:scale-[0.98]"
                   onClick={handleOpenEditAppointment}
                 >
-                  Editar agendamento
+                  <span
+                    className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-purple-200/60 to-transparent transition-transform duration-700 group-hover:translate-x-full"
+                    aria-hidden
+                  />
+                  <span className="relative z-10 transition-colors duration-300 text-center w-full">Editar agendamento</span>
                 </button>
               ) : null}
               {selectedAppointmentDetails.canEditStatus && isEditingAppointment ? (
                 <>
                   <button
                     type="button"
-                    className="flex-1 rounded-lg border bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                    className="group relative flex-1 overflow-hidden rounded-lg bg-purple-600 px-3 py-2 text-sm font-semibold text-white shadow-lg shadow-purple-200 transition-all duration-300 hover:-translate-y-0.5 hover:bg-purple-700 hover:shadow-purple-300 active:scale-95"
                     onClick={handleSaveEditedAppointment}
                   >
-                    Salvar alterações
+                    <span
+                      className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-700 group-hover:translate-x-full"
+                      aria-hidden
+                    />
+                    <span className="relative z-10 flex w-full items-center justify-center gap-2 text-center">
+                      <CheckCircle2 className="h-4 w-4 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6" />
+                      Salvar alterações
+                    </span>
                   </button>
                   <button
                     type="button"
-                    className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                    className="group relative flex-1 overflow-hidden rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 hover:shadow-md hover:shadow-rose-100 active:scale-[0.98]"
                     onClick={() => {
                       setIsEditingAppointment(false);
                       setEditAppointmentError("");
                     }}
                   >
-                    Cancelar edição
+                    <span
+                      className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-rose-200/70 to-transparent transition-transform duration-700 group-hover:translate-x-full"
+                      aria-hidden
+                    />
+                    <span className="relative z-10 transition-colors duration-300 group-hover:text-rose-800 text-center w-full">
+                      Cancelar edição
+                    </span>
                   </button>
                 </>
               ) : null}
@@ -1990,39 +2768,73 @@ export default function AgendaPage() {
       ) : null}
 
       {isCreateModalOpen ? (
-        <div
-          className="fixed inset-0 z-50 flex justify-end bg-slate-900/35 backdrop-blur-[1px]"
-          onClick={() => setIsCreateModalOpen(false)}
-        >
+        <div className="fixed inset-0 z-50 flex justify-end">
           <div
-            className="flex h-full w-full max-w-xl flex-col border-l border-indigo-100 bg-white shadow-2xl shadow-indigo-200/60"
+            role="presentation"
+            className={`absolute inset-0 bg-slate-900/40 ${
+              isCreateDrawerClosing ? "prof-drawer-backdrop-leave" : "prof-drawer-backdrop-enter"
+            }`}
+            onClick={() => setIsCreateDrawerClosing(true)}
+          />
+          <div
+            className={`relative z-10 flex h-full w-full max-w-md flex-col overflow-hidden rounded-l-lg border-l border-purple-100 bg-white shadow-2xl shadow-purple-200/60 ${
+              isCreateDrawerClosing ? "prof-drawer-aside-leave" : "prof-drawer-aside-enter"
+            }`}
             onClick={(event) => event.stopPropagation()}
+            onAnimationEnd={() => {
+              if (!isCreateDrawerClosing) return;
+              setIsCreateModalOpen(false);
+              setIsCreateDrawerClosing(false);
+              setNewAppointment({
+                date: "",
+                startTime: "",
+                endTime: "",
+                patient: "",
+                procedure: "",
+                procedureValue: "",
+                professional: "",
+                status: "confirmado",
+                notes: "",
+                paymentMethod: "",
+                installments: "",
+              });
+              setCreateAppointmentError("");
+            }}
           >
             <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
 
               <div className="flex items-center gap-2">
-                <CalendarIcon className="h-6 w-6 text-blue-600" />
-                <h3 className="text-2xl font-bold text-slate-800">Novo Agendamento</h3>
+                <CalendarIcon className="h-6 w-6 text-purple-600" />
+                <h3 className="text-2xl font-bold text-slate-800">Criar Agendamento</h3>
               </div>
 
               <button
                 type="button"
-                className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                onClick={() => setIsCreateModalOpen(false)}
+                className="group rounded-lg p-1.5 text-slate-400 transition-all duration-200 ease-out hover:scale-110 hover:bg-slate-100 hover:text-slate-700 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
+                onClick={() => setIsCreateDrawerClosing(true)}
                 aria-label="Fechar painel"
               >
-                <X className="h-5 w-5" />
+                <X
+                  className="h-5 w-5 transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover:rotate-90"
+                  strokeWidth={2}
+                />
               </button>
             </div>
 
             <div className="flex-1 space-y-6 overflow-y-auto bg-slate-50 px-5 py-5">
               <label className="block text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
                 Cliente
-                <div className="mt-2 flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3">
-                  <UserSearch className="h-5 w-5 text-slate-400" />
+                <div
+                  className={`mt-2 flex h-10 items-center gap-3 rounded-lg border px-3 sm:h-11 ${
+                    isBlockedSlot
+                      ? "border-slate-200 bg-slate-100"
+                      : "border-slate-200 bg-slate-50 focus-within:border-purple-400 focus-within:ring-0"
+                  }`}
+                >
+                  <UserSearch className={`h-5 w-5 ${isBlockedSlot ? "text-slate-300" : "text-slate-400"}`} />
                   <input
                     type="text"
-                    className="w-full bg-transparent text-base text-slate-700 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:text-slate-400"
+                    className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:text-slate-400 sm:text-base"
                     placeholder="Nome do cliente ou CPF"
                     value={newAppointment.patient}
                     disabled={isBlockedSlot}
@@ -2031,60 +2843,196 @@ export default function AgendaPage() {
                     }
                   />
                 </div>
-                <div className="mt-2 flex justify-end">
-                  <button
-                    type="button"
-                    className="text-sm font-semibold normal-case text-blue-600 transition hover:text-blue-800"
-                  >
-                    + Adicionar cliente
-                  </button>
-                </div>
+                {!isBlockedSlot ? (
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuickContactName(newAppointment.patient);
+                        setQuickContactCPF("");
+                        setQuickContactBirthDate("");
+                        setQuickContactEmail("");
+                        setQuickContactPhone("");
+                        setQuickContactSubmitted(false);
+                        setIsQuickContactDrawerClosing(false);
+                        setIsQuickContactDrawerOpen(true);
+                      }}
+                      className="text-sm font-semibold normal-case text-purple-600 transition hover:text-purple-800"
+                    >
+                      + Adicionar cliente
+                    </button>
+                  </div>
+                ) : null}
               </label>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
-                  Profissional
-                  <select
-                    className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-base text-slate-700"
-                    value={newAppointment.professional}
-                    onChange={(event) =>
-                      setNewAppointment((current) => ({ ...current, professional: event.target.value }))
-                    }
-                  >
-                    {professionalOptions.map((professional) => (
-                      <option key={professional} value={professional}>
-                        {professional}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
-                  Procedimento
-                  <select
-                    className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-base text-slate-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                    value={newAppointment.procedure}
-                    disabled={isBlockedSlot}
-                    onChange={(event) =>
-                      setNewAppointment((current) => ({ ...current, procedure: event.target.value }))
-                    }
-                  >
-                    {procedureOptions.map((procedure) => (
-                      <option key={procedure} value={procedure}>
-                        {procedure}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <div className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
+                  <p>Profissional</p>
+                  <div className="relative mt-2" ref={createProfessionalSelectRef}>
+                    <button
+                      type="button"
+                      aria-expanded={isCreateProfessionalSelectOpen}
+                      onClick={() => {
+                        setIsCreateProfessionalSelectOpen((current) => !current);
+                        setIsCreateProcedureSelectOpen(false);
+                      }}
+                      className={`flex h-10 w-full items-center justify-between gap-3 rounded-lg border px-3 text-left text-sm transition sm:h-11 sm:text-base ${
+                        isCreateProfessionalSelectOpen
+                          ? "border-purple-400 bg-white ring-1 ring-purple-100"
+                          : "border-slate-200 bg-slate-50 hover:border-purple-300 hover:bg-purple-50/40"
+                      }`}
+                    >
+                      <span className="flex min-w-0 items-center gap-3">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple-100 text-purple-600">
+                          <UserIcon className="h-4 w-4" />
+                        </span>
+                        <span className="min-w-0">
+                          <span
+                            className={`block truncate font-medium ${
+                              newAppointment.professional ? "text-slate-800" : "text-slate-400"
+                            }`}
+                          >
+                            {newAppointment.professional || "Selecione o profissional"}
+                          </span>
+                        </span>
+                      </span>
+                      <ChevronDown
+                        className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${
+                          isCreateProfessionalSelectOpen ? "rotate-180 text-purple-600" : ""
+                        }`}
+                      />
+                    </button>
+                    {isCreateProfessionalSelectOpen ? (
+                      <div className="absolute left-0 top-full z-30 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-purple-100 bg-white p-2 shadow-lg">
+                        {createProfessionalOptions.map((professional) => {
+                          const isActive = professional === newAppointment.professional;
+
+                          return (
+                            <button
+                              key={professional}
+                              type="button"
+                              onClick={() => {
+                                setNewAppointment((current) => ({ ...current, professional }));
+                                setIsCreateProfessionalSelectOpen(false);
+                              }}
+                              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
+                                isActive
+                                  ? "bg-purple-50 text-purple-700"
+                                  : "text-slate-700 hover:bg-slate-50"
+                              }`}
+                            >
+                              <span
+                                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                                  isActive ? "bg-purple-100 text-purple-600" : "bg-slate-100 text-slate-500"
+                                }`}
+                              >
+                                <UserIcon className="h-4 w-4" />
+                              </span>
+                              <span className="min-w-0 truncate text-sm font-medium normal-case">
+                                {professional}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
+                  <p>Procedimento</p>
+                  <div className="relative mt-2" ref={createProcedureSelectRef}>
+                    <button
+                      type="button"
+                      disabled={isBlockedSlot}
+                      aria-expanded={isCreateProcedureSelectOpen}
+                      onClick={() => {
+                        if (isBlockedSlot) return;
+                        setIsCreateProcedureSelectOpen((current) => !current);
+                        setIsCreateProfessionalSelectOpen(false);
+                      }}
+                      className={`flex h-10 w-full items-center justify-between gap-3 rounded-lg border px-3 text-left text-sm transition sm:h-11 sm:text-base ${
+                        isBlockedSlot
+                          ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                          : isCreateProcedureSelectOpen
+                            ? "border-purple-400 bg-white ring-1 ring-purple-100"
+                            : "border-slate-200 bg-slate-50 hover:border-purple-300 hover:bg-purple-50/40"
+                      }`}
+                    >
+                      <span className="flex min-w-0 items-center gap-3">
+                        <span
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                            isBlockedSlot ? "bg-slate-200 text-slate-400" : "bg-purple-100 text-purple-600"
+                          }`}
+                        >
+                          <InfoIcon className="h-4 w-4" />
+                        </span>
+                        <span className="min-w-0">
+                          <span
+                            className={`block truncate font-medium ${
+                              newAppointment.procedure
+                                ? isBlockedSlot
+                                  ? "text-slate-400"
+                                  : "text-slate-800"
+                                : "text-slate-400"
+                            }`}
+                          >
+                            {newAppointment.procedure || "Selecione o procedimento"}
+                          </span>
+                         
+                        </span>
+                      </span>
+                      <ChevronDown
+                        className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${
+                          isCreateProcedureSelectOpen ? "rotate-180 text-purple-600" : ""
+                        }`}
+                      />
+                    </button>
+                    {isCreateProcedureSelectOpen && !isBlockedSlot ? (
+                      <div className="absolute left-0 top-full z-30 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-purple-100 bg-white p-2 shadow-lg">
+                        {procedureOptions.map((procedure) => {
+                          const isActive = procedure === newAppointment.procedure;
+
+                          return (
+                            <button
+                              key={procedure}
+                              type="button"
+                              onClick={() => {
+                                setNewAppointment((current) => ({ ...current, procedure }));
+                                setIsCreateProcedureSelectOpen(false);
+                              }}
+                              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
+                                isActive
+                                  ? "bg-purple-50 text-purple-700"
+                                  : "text-slate-700 hover:bg-slate-50"
+                              }`}
+                            >
+                              <span
+                                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                                  isActive ? "bg-purple-100 text-purple-600" : "bg-purple-100 text-purple-600"
+                                }`}
+                              >
+                                <InfoIcon className="h-4 w-4" />
+                              </span>
+                              <span className="min-w-0 truncate text-sm font-medium normal-case">
+                                {procedure}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
               </div>
 
-              <label className="flex cursor-pointer items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+              <label className="flex cursor-pointer items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
                   <Lock className="h-4 w-4 text-slate-500" />
                   Horário bloqueado para o profissional
                 </div>
                 <input
                   type="checkbox"
-                  className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                  className="h-4 w-4 rounded border-slate-300 text-purple-600 focus:outline-none focus:ring-0 focus-visible:ring-0"
                   checked={isBlockedSlot}
                   onChange={(event) =>
                     setNewAppointment((current) => ({
@@ -2100,41 +3048,23 @@ export default function AgendaPage() {
                 </p>
               ) : null}
 
-              <label className="block text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
-                Valor do procedimento
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-base text-slate-700 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                  placeholder="R$ 0,00"
-                  value={newAppointment.procedureValue}
-                  disabled={isBlockedSlot}
-                  onChange={(event) =>
-                    setNewAppointment((current) => ({
-                      ...current,
-                      procedureValue: formatCurrencyInput(event.target.value),
-                    }))
-                  }
-                />
-              </label>
-
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <label className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
                   Data
                   <div className="relative mt-2" ref={createDatePickerRef}>
                     <button
                       type="button"
-                      className={`flex w-full cursor-pointer items-center justify-between gap-2 rounded-2xl border bg-white px-4 py-3 text-left text-sm font-medium shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                      className={`flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-left text-sm font-medium shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 ${
                         isCreateDatePickerOpen
-                          ? "border-blue-400 ring-1 ring-blue-200"
-                          : "border-slate-200 text-slate-700 hover:border-blue-300 hover:bg-blue-50/50 hover:shadow-md active:scale-[0.995]"
+                          ? "border-purple-400 ring-1 ring-purple-200"
+                          : "text-slate-700 hover:border-purple-300 hover:bg-purple-50/50 hover:shadow-md active:scale-[0.995]"
                       }`}
                       onClick={openCreateDatePicker}
                       aria-label="Selecionar data do agendamento"
                       aria-expanded={isCreateDatePickerOpen}
                     >
                       <span className="inline-flex min-w-0 items-center gap-2">
-                        <CalendarIcon className="h-5 w-5 shrink-0 text-blue-600" aria-hidden />
+                        <CalendarIcon className="h-5 w-5 shrink-0 text-purple-600" aria-hidden />
                         <span
                           className={`whitespace-nowrap ${newAppointment.date ? "text-slate-800" : "text-slate-400"}`}
                         >
@@ -2142,16 +3072,16 @@ export default function AgendaPage() {
                         </span>
                       </span>
                       <ChevronDown
-                        className={`h-4 w-4 shrink-0 text-slate-500 ${isCreateDatePickerOpen ? "rotate-180 text-blue-600" : ""}`}
+                        className={`h-4 w-4 shrink-0 text-slate-500 ${isCreateDatePickerOpen ? "rotate-180 text-purple-600" : ""}`}
                         aria-hidden
                       />
                     </button>
                     {isCreateDatePickerOpen ? (
-                      <div className="absolute left-0 top-full z-40 mt-2 w-80 rounded-2xl border border-blue-100 bg-white p-3 shadow-lg">
+                      <div className="absolute left-0 top-full z-40 mt-2 w-80 rounded-2xl border border-purple-100 bg-white p-3 shadow-lg">
                         <div className="mb-3 flex items-center justify-between">
                           <button
                             type="button"
-                            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-blue-50 hover:text-blue-700"
+                            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-purple-50 hover:text-purple-700"
                             onClick={() => setCreateDatePickerMonth((current) => addMonths(current, -1))}
                             aria-label="Mês anterior"
                           >
@@ -2165,7 +3095,7 @@ export default function AgendaPage() {
                           </p>
                           <button
                             type="button"
-                            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-blue-50 hover:text-blue-700"
+                            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-purple-50 hover:text-purple-700"
                             onClick={() => setCreateDatePickerMonth((current) => addMonths(current, 1))}
                             aria-label="Próximo mês"
                           >
@@ -2190,14 +3120,15 @@ export default function AgendaPage() {
                               <button
                                 key={`create-picker-day-${dayKey}`}
                                 type="button"
-                                className={`h-9 rounded-lg text-sm font-semibold transition ${isSelected
-                                    ? "bg-blue-600 text-white"
+                                className={`h-9 rounded-lg text-sm font-semibold transition ${
+                                  isSelected
+                                    ? "bg-purple-600 text-white"
                                     : isToday
-                                      ? "bg-blue-50 text-blue-700"
+                                      ? "bg-purple-50 text-purple-700"
                                       : isCurrentMonth
-                                        ? "text-slate-700 hover:bg-blue-50"
+                                        ? "text-slate-700 hover:bg-purple-50"
                                         : "text-slate-300 hover:bg-slate-50"
-                                  }`}
+                                }`}
                                 onClick={() => {
                                   setNewAppointment((current) => ({ ...current, date: dayKey }));
                                   setIsCreateDatePickerOpen(false);
@@ -2212,30 +3143,154 @@ export default function AgendaPage() {
                     ) : null}
                   </div>
                 </label>
+                <label className="block text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
+                  Valor
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-purple-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-purple-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 sm:h-11 sm:text-base"
+                    placeholder="R$ 0,00"
+                    value={newAppointment.procedureValue}
+                    disabled={isBlockedSlot}
+                    onChange={(event) =>
+                      setNewAppointment((current) => ({
+                        ...current,
+                        procedureValue: formatCurrencyInput(event.target.value),
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+
+              <div className="block text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
+                <p className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
+                  Forma de pagamento
+                </p>
+                <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                  {paymentMethodOptions.map((option) => {
+                    const Icon = option.icon;
+                    const isSelected = newAppointment.paymentMethod === option.value;
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        disabled={isBlockedSlot}
+                        aria-pressed={isSelected}
+                        onClick={() =>
+                          setNewAppointment((current) => ({
+                            ...current,
+                            paymentMethod: current.paymentMethod === option.value ? "" : option.value,
+                            installments:
+                              option.value === "cartao_credito" && current.paymentMethod !== option.value
+                                ? current.installments
+                                : "",
+                          }))
+                        }
+                        className={`group relative flex items-center gap-3 overflow-hidden rounded-xl border px-4 py-3 text-left normal-case transition-all duration-300 ${
+                          isBlockedSlot
+                            ? "cursor-not-allowed border-slate-200 bg-slate-100 opacity-70"
+                            : isSelected
+                              ? "scale-[1.02] border-purple-400 bg-purple-50 text-purple-700 shadow-md shadow-purple-100 ring-2 ring-purple-200/70"
+                              : "border-slate-200 bg-slate-50 text-slate-700 hover:-translate-y-0.5 hover:border-purple-300 hover:bg-purple-50/60 hover:shadow-sm"
+                        }`}
+                      >
+                        <span
+                          className={`absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-700 ${
+                            isSelected ? "translate-x-full" : "-translate-x-full group-hover:translate-x-full"
+                          }`}
+                          aria-hidden
+                        />
+                        <span
+                          className={`relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all duration-300 ${
+                            isSelected
+                              ? "bg-purple-100 text-purple-600 scale-110"
+                              : "bg-white text-slate-500 group-hover:scale-105"
+                          }`}
+                        >
+                          <Icon className={`h-5 w-5 transition-transform duration-300 ${isSelected ? "rotate-6" : ""}`} />
+                        </span>
+                        <span className="relative z-10 min-w-0">
+                          <span className="block text-sm font-semibold">{option.label}</span>
+                          <span className="block text-xs font-medium text-slate-500">{option.hint}</span>
+                        </span>
+                        <span
+                          className={`relative z-10 ml-auto rounded-full transition-all duration-300 ${
+                            isSelected
+                              ? "h-2.5 w-2.5 scale-100 bg-purple-600 opacity-100"
+                              : "h-2.5 w-2.5 scale-75 bg-purple-600 opacity-0"
+                          }`}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {newAppointment.paymentMethod === "cartao_credito" && (
+                <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 ml-1">
+                    Parcelamento
+                  </label>
+                  <div className="group relative flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 transition-all focus-within:border-purple-400 focus-within:bg-white focus-within:ring-4 focus-within:ring-purple-100/50">
+                    <input
+                      type="number"
+                      min="1"
+                      max="12"
+                      placeholder="Quantidade de parcelas (ex: 3)"
+                      className="w-full bg-transparent text-sm font-bold text-slate-700 outline-none placeholder:text-slate-400"
+                      value={newAppointment.installments}
+                      onChange={(event) =>
+                        setNewAppointment((current) => ({
+                          ...current,
+                          installments: event.target.value,
+                        }))
+                      }
+                    />
+                    <div className="text-[10px] font-black text-purple-400 uppercase tracking-widest">
+                      vezes
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid gap-4 sm:grid-cols-2">
                 <label className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
                   Início
-                  <div className="mt-2 flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3">
+                  <div className="mt-2 flex h-10 items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-purple-400 focus-within:bg-slate-50 focus-within:ring-0 sm:h-11">
                     <Clock4 className="h-5 w-5 text-slate-400" />
                     <input
-                      type="time"
-                      className="w-full bg-transparent text-base text-slate-700 outline-none"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={5}
+                      placeholder="08:30"
+                      className="h-full w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 sm:text-base"
                       value={newAppointment.startTime}
                       onChange={(event) =>
-                        setNewAppointment((current) => ({ ...current, startTime: event.target.value }))
+                        setNewAppointment((current) => ({
+                          ...current,
+                          startTime: formatTimeInput(event.target.value),
+                        }))
                       }
                     />
                   </div>
                 </label>
                 <label className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
                   Término
-                  <div className="mt-2 flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3">
+                  <div className="mt-2 flex h-10 items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-purple-400 focus-within:bg-slate-50 focus-within:ring-0 sm:h-11">
                     <Clock4 className="h-5 w-5 text-slate-400" />
                     <input
-                      type="time"
-                      className="w-full bg-transparent text-base text-slate-700 outline-none"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={5}
+                      placeholder="09:00"
+                      className="h-full w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 sm:text-base"
                       value={newAppointment.endTime}
                       onChange={(event) =>
-                        setNewAppointment((current) => ({ ...current, endTime: event.target.value }))
+                        setNewAppointment((current) => ({
+                          ...current,
+                          endTime: formatTimeInput(event.target.value),
+                        }))
                       }
                     />
                   </div>
@@ -2245,7 +3300,7 @@ export default function AgendaPage() {
               <label className="block text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
                 Observações
                 <textarea
-                  className="mt-2 h-28 w-full resize-none rounded-2xl border border-slate-200 px-4 py-3 text-base text-slate-700 outline-none placeholder:text-slate-400"
+                  className="mt-2 h-28 w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-base text-slate-700 outline-none placeholder:text-slate-400 focus:border-purple-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-purple-100"
                   placeholder="Observações adicionais..."
                   value={newAppointment.notes}
                   onChange={(event) =>
@@ -2259,23 +3314,171 @@ export default function AgendaPage() {
               <p className="px-5 pb-2 text-sm font-medium text-rose-600">{createAppointmentError}</p>
             ) : null}
 
-            <div className="flex gap-3 border-t border-indigo-100 bg-white px-5 py-4">
+            <div className="flex gap-3 border-t border-purple-100 bg-white px-5 py-4">
               <button
                 type="button"
-                className="flex-1 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+                className="group relative flex-1 overflow-hidden rounded-lg bg-purple-600 px-3 py-2 text-sm font-semibold text-white shadow-lg shadow-purple-200 transition-all duration-300 hover:-translate-y-0.5 hover:bg-purple-700 hover:shadow-purple-300 active:scale-95"
                 onClick={handleCreateAppointment}
               >
-                {isBlockedSlot ? "Salvar Bloqueio" : "Salvar Agendamento"}
+                <span
+                  className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-700 group-hover:translate-x-full"
+                  aria-hidden
+                />
+                <span className="relative z-10 flex items-center justify-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6" />
+                  {isBlockedSlot ? "Salvar Bloqueio" : "Salvar Agendamento"}
+                </span>
               </button>
               <button
                 type="button"
-                className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-                onClick={() => setIsCreateModalOpen(false)}
+                className="group relative flex-1 overflow-hidden rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 hover:shadow-md hover:shadow-rose-100 active:scale-95"
+                onClick={() => setIsCreateDrawerClosing(true)}
               >
-                Cancelar
+                <span
+                  className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-rose-200/70 to-transparent transition-transform duration-700 group-hover:translate-x-full"
+                  aria-hidden
+                />
+                <span className="relative z-10">Cancelar</span>
               </button>
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {isQuickContactDrawerOpen ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div
+            role="presentation"
+            className={`absolute inset-0 bg-slate-900/60 backdrop-blur-sm ${
+              isQuickContactDrawerClosing ? "prof-drawer-backdrop-leave" : "prof-drawer-backdrop-enter"
+            }`}
+            onClick={handleCloseQuickContact}
+          />
+          <aside
+            className={`relative z-10 flex w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ${
+              isQuickContactDrawerClosing ? "modal-leave" : "modal-enter"
+            }`}
+          >
+            <header className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-50 text-purple-600">
+                  <UserPlus className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Novo Contato Rápido</h2>
+                  <p className="text-xs font-medium text-slate-500">Cadastre o cliente sem sair do agendamento</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseQuickContact}
+                className="group rounded-lg p-2 text-slate-400 transition-all hover:bg-slate-100 hover:text-slate-600"
+              >
+                <X className="h-5 w-5 transition-transform group-hover:rotate-90" />
+              </button>
+            </header>
+
+            <div className="max-h-[70vh] overflow-y-auto p-6">
+              <div className="grid gap-5">
+                <div>
+                  <label className="mb-1.5 block text-xs font-black uppercase tracking-widest text-slate-400 ml-1">
+                    Nome Completo <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Beatriz Silva"
+                    value={quickContactName}
+                    onChange={(e) => setQuickContactName(e.target.value)}
+                    className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-700 outline-none transition-all focus:border-purple-400 focus:bg-white focus:ring-4 focus:ring-purple-100"
+                  />
+                  {quickContactSubmitted && !quickContactName.trim() && (
+                    <p className="mt-1.5 text-[10px] font-bold text-rose-500 uppercase tracking-wider ml-1">Nome é obrigatório</p>
+                  )}
+                </div>
+
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-black uppercase tracking-widest text-slate-400 ml-1">
+                      Telefone <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      placeholder="(00) 00000-0000"
+                      value={quickContactPhone}
+                      onChange={(e) => setQuickContactPhone(formatPhone(e.target.value))}
+                      className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-700 outline-none transition-all focus:border-purple-400 focus:bg-white focus:ring-4 focus:ring-purple-100"
+                    />
+                    {quickContactSubmitted && quickContactPhone.replace(/\D/g, "").length !== 11 && (
+                      <p className="mt-1.5 text-[10px] font-bold text-rose-500 uppercase tracking-wider ml-1">Telefone inválido</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Data de Nascimento</label>
+                    <input
+                      type="text"
+                      placeholder="DD/MM/AAAA"
+                      value={quickContactBirthDate}
+                      onChange={(e) => setQuickContactBirthDate(formatBirthDate(e.target.value))}
+                      className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-700 outline-none transition-all focus:border-purple-400 focus:bg-white focus:ring-4 focus:ring-purple-100"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-black uppercase tracking-widest text-slate-400 ml-1">CPF</label>
+                    <input
+                      type="text"
+                      placeholder="000.000.000-00"
+                      value={quickContactCPF}
+                      onChange={(e) => setQuickContactCPF(formatCPF(e.target.value))}
+                      className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-700 outline-none transition-all focus:border-purple-400 focus:bg-white focus:ring-4 focus:ring-purple-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-black uppercase tracking-widest text-slate-400 ml-1">E-mail</label>
+                    <input
+                      type="email"
+                      placeholder="exemplo@email.com"
+                      value={quickContactEmail}
+                      onChange={(e) => setQuickContactEmail(e.target.value)}
+                      className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-700 outline-none transition-all focus:border-purple-400 focus:bg-white focus:ring-4 focus:ring-purple-100"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <footer className="border-t border-slate-100 bg-slate-50/50 p-6">
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={handleCloseQuickContact}
+                  className="group relative overflow-hidden rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-500 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 hover:shadow-md hover:shadow-rose-100 active:scale-95"
+                >
+                  <span
+                    className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-rose-200/70 to-transparent transition-transform duration-700 group-hover:translate-x-full"
+                    aria-hidden
+                  />
+                  <span className="relative z-10">Cancelar</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveQuickContact}
+                  className="group relative overflow-hidden rounded-lg bg-purple-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-purple-200 transition-all duration-300 hover:-translate-y-0.5 hover:bg-purple-700 hover:shadow-purple-300 active:scale-95"
+                >
+                  <span
+                    className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-700 group-hover:translate-x-full"
+                    aria-hidden
+                  />
+                  <span className="relative z-10 flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6" />
+                    Salvar
+                  </span>
+                </button>
+              </div>
+            </footer>
+          </aside>
         </div>
       ) : null}
 

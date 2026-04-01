@@ -21,7 +21,7 @@ export function AuthenticatedShell({ children }: AuthenticatedShellProps) {
           <button
             type="button"
             onClick={() => setMobileMenuOpen(true)}
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 transition hover:bg-slate-100 hover:text-blue-700"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 transition hover:bg-slate-100 hover:text-purple-700"
             aria-expanded={mobileMenuOpen}
             aria-label="Abrir menu"
           >

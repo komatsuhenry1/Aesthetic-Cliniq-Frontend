@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
+  Activity,
   CalendarClock,
   ClipboardList,
   Cog,
@@ -37,7 +38,7 @@ function BrandIcon() {
     <svg
       aria-hidden="true"
       viewBox="0 0 24 24"
-      className="h-5 w-5 text-blue-500"
+      className="h-5 w-5 text-purple-500"
       fill="currentColor"
     >
       <path d="M10.6 2.4a.75.75 0 0 1 1.06 0l1.94 1.94a.75.75 0 0 1-.53 1.28h-3.88a.75.75 0 0 1-.53-1.28zM4.4 8.6a.75.75 0 0 1 1.06 0l1.94 1.94a.75.75 0 0 1-.53 1.28H2.99a.75.75 0 0 1-.53-1.28zM16.6 8.6a.75.75 0 0 1 1.06 0l1.94 1.94a.75.75 0 0 1-.53 1.28h-3.88a.75.75 0 0 1-.53-1.28zM10.6 14.6a.75.75 0 0 1 1.06 0l1.94 1.94a.75.75 0 0 1-.53 1.28h-3.88a.75.75 0 0 1-.53-1.28z" />
@@ -50,6 +51,7 @@ const navigationItems: NavigationItem[] = [
   { label: "Agenda", href: "/agenda", icon: CalendarClock },
   { label: "Profissionais", href: "/profissionais", icon: Users },
   { label: "Contatos", href: "/clientes", icon: Users },
+  { label: "Atendimentos", href: "/atendimentos", icon: Activity },
   { label: "Procedimentos", href: "/procedimentos", icon: ClipboardList },
   { label: "Estoque", href: "/estoque", icon: Package2 },
   { label: "Financeiro", href: "/financeiro", icon: CreditCard },
@@ -121,16 +123,16 @@ export function AppSidebar({ mobileOpen = false, onMobileClose }: AppSidebarProp
               href={href}
               onClick={() => onNavigate?.()}
               className={`group relative flex items-center gap-3 overflow-hidden rounded-xl px-4 py-3 text-sm font-medium transition-all duration-300 ${
-                active ? "text-blue-700" : "text-slate-500 hover:text-slate-800"
+                active ? "text-purple-700" : "text-slate-500 hover:text-slate-800"
               }`}
             >
               <span
                 className={`absolute inset-0 rounded-xl transition-all duration-300 ${
-                  active ? "scale-100 bg-blue-50 opacity-100" : "scale-95 bg-slate-50 opacity-0 group-hover:opacity-100"
+                  active ? "scale-100 bg-purple-50 opacity-100" : "scale-95 bg-slate-50 opacity-0 group-hover:opacity-100"
                 }`}
               />
               <span
-                className={`absolute left-1 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-blue-500 transition-all duration-300 ${
+                className={`absolute left-1 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-purple-500 transition-all duration-300 ${
                   active ? "opacity-100" : "opacity-0"
                 }`}
               />

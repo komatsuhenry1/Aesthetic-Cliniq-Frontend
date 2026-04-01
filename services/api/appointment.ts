@@ -13,6 +13,9 @@ export type AppointmentApiItem = {
   procedure: string;
   professional?: string;
   status: string;
+  /** forma de pagamento vinda da API (snake_case ou camelCase) */
+  payment_method?: string;
+  paymentMethod?: string;
   /** valor em reais (ex.: 150) */
   price?: number;
   procedure_value?: number;
@@ -36,6 +39,19 @@ export type AgendaAppointment = {
   status: AppointmentStatus;
   /** valor exibido (ex.: "R$ 150,00"), vindo de price na API */
   procedureValue?: string;
+  /** forma de pagamento já tratada para exibição (vinda de payment_method na API) */
+  paymentMethod?: string;
+};
+
+export type MonthlyCountItem = {
+  date: string;
+  count: number;
+};
+
+export type MonthlyCountApiResponse = {
+  data?: MonthlyCountItem[];
+  message?: string;
+  success?: boolean;
 };
 
 export class ApiRequestError extends Error {
@@ -103,6 +119,8 @@ function mapApiItemToAgendaAppointment(item: AppointmentApiItem, index: number):
   const patientName = item.patient_name ?? item.patient ?? "";
   const professionalName = item.professional_name ?? item.professional ?? "";
   const procedureValue = apiPriceToProcedureValue(item);
+  const rawPaymentMethod = item.payment_method ?? item.paymentMethod;
+  const paymentMethod = typeof rawPaymentMethod === "string" ? rawPaymentMethod.trim() : "";
 
   return {
     id: `${date}-${startTime}-${patientName || "sem-paciente"}-${index}`,
@@ -114,6 +132,7 @@ function mapApiItemToAgendaAppointment(item: AppointmentApiItem, index: number):
     professional: professionalName.trim() || "Sem profissional",
     status: item.status as AppointmentStatus,
     ...(procedureValue ? { procedureValue } : {}),
+    ...(paymentMethod ? { paymentMethod } : {}),
   };
 }
 
@@ -148,6 +167,44 @@ export async function getAppointmentsByDate(date: string): Promise<AgendaAppoint
   }
 
   return response.data.map(mapApiItemToAgendaAppointment);
+}
+
+export async function getProfessionalAppointmentsByDate(
+  date: string,
+  professionalId: string
+): Promise<AgendaAppointment[]> {
+  const encodedDate = encodeURIComponent(date);
+  const encodedId = encodeURIComponent(professionalId);
+  const response = await apiRequestJson<AppointmentApiResponse>(
+    `/api/v1/appointment/professional-day?date=${encodedDate}&professional_id=${encodedId}`,
+    {
+      method: "GET",
+      headers: getAuthHeader(),
+    }
+  );
+
+  if (!response.data || !Array.isArray(response.data)) {
+    return [];
+  }
+
+  return response.data.map(mapApiItemToAgendaAppointment);
+}
+
+export async function getMonthlyAppointmentCount(month: string): Promise<MonthlyCountItem[]> {
+  const encodedMonth = encodeURIComponent(month);
+  const response = await apiRequestJson<MonthlyCountApiResponse>(
+    `/api/v1/appointment/month-count?month=${encodedMonth}`,
+    {
+      method: "GET",
+      headers: getAuthHeader(),
+    }
+  );
+
+  if (!response.data || !Array.isArray(response.data)) {
+    return [];
+  }
+
+  return response.data;
 }
 
 export async function getNextFiveAppointments(): Promise<AgendaAppointment[]> {

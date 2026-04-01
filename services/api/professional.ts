@@ -18,6 +18,13 @@ export type ProfessionalsApiResponse = {
   success?: boolean;
 };
 
+export type ProfessionalNamesApiResponse = {
+  data?: Array<string | { name?: string | null }> | null;
+  names?: string[] | null;
+  message?: string;
+  success?: boolean;
+};
+
 export type CreateProfessionalPayload = {
   name: string;
   specialty: string;
@@ -31,6 +38,15 @@ export type ProfessionalListItem = {
   specialty: string;
   email: string;
   phone: string;
+  status: "ativo" | "inativo";
+};
+
+export type UpdateProfessionalPayload = {
+  id: string;
+  name: string;
+  specialty: string;
+  phone: string;
+  email: string;
   status: "ativo" | "inativo";
 };
 
@@ -92,6 +108,31 @@ export async function getProfessionals(): Promise<ProfessionalListItem[]> {
   return response.data.map(mapApiToListItem);
 }
 
+export async function getProfessionalNames(): Promise<string[]> {
+  const response = await apiRequestJson<ProfessionalNamesApiResponse | string[]>(
+    "/api/v1/professional/names-ids",
+    {
+      method: "GET",
+      headers: getAuthHeader(),
+    }
+  );
+
+  const rawNames = Array.isArray(response)
+    ? response
+    : Array.isArray(response.data)
+      ? response.data
+      : Array.isArray(response.names)
+        ? response.names
+        : [];
+
+  const normalized = rawNames
+    .map((item) => (typeof item === "string" ? item : item?.name ?? ""))
+    .map((name) => name.trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(normalized)).sort((first, second) => first.localeCompare(second, "pt-BR"));
+}
+
 /**
  * Cria profissional (POST /api/v1/professional/)
  */
@@ -126,5 +167,32 @@ export async function deleteProfessional(professionalId: string): Promise<{ mess
   return {
     message:
       typeof response.message === "string" ? response.message : "Profissional deletado com sucesso.",
+  };
+}
+
+/**
+ * Atualiza profissional (PUT /api/v1/professional/{id})
+ */
+export async function updateProfessional(
+  payload: UpdateProfessionalPayload
+): Promise<{ message: string }> {
+  const id = encodeURIComponent(payload.id.trim());
+  const apiStatus = payload.status === "inativo" ? "inactive" : "active";
+
+  const response = await apiRequestJson<ProfessionalsApiResponse>(`/api/v1/professional/${id}`, {
+    method: "PATCH",
+    headers: getAuthHeader(),
+    body: JSON.stringify({
+      name: payload.name.trim(),
+      specialty: payload.specialty.trim(),
+      phone: payload.phone.replace(/\D/g, ""),
+      email: payload.email.trim(),
+      status: apiStatus,
+    }),
+  });
+
+  return {
+    message:
+      typeof response.message === "string" ? response.message : "Profissional atualizado com sucesso.",
   };
 }

@@ -11,7 +11,7 @@ function BrandIcon() {
     <svg
       aria-hidden="true"
       viewBox="0 0 24 24"
-      className="h-5 w-5 text-blue-500"
+      className="h-5 w-5 text-purple-500"
       fill="currentColor"
     >
       <path d="M10.6 2.4a.75.75 0 0 1 1.06 0l1.94 1.94a.75.75 0 0 1-.53 1.28h-3.88a.75.75 0 0 1-.53-1.28zM4.4 8.6a.75.75 0 0 1 1.06 0l1.94 1.94a.75.75 0 0 1-.53 1.28H2.99a.75.75 0 0 1-.53-1.28zM16.6 8.6a.75.75 0 0 1 1.06 0l1.94 1.94a.75.75 0 0 1-.53 1.28h-3.88a.75.75 0 0 1-.53-1.28zM10.6 14.6a.75.75 0 0 1 1.06 0l1.94 1.94a.75.75 0 0 1-.53 1.28h-3.88a.75.75 0 0 1-.53-1.28z" />
@@ -163,7 +163,7 @@ export default function RegisterPage() {
             Já tem uma conta?{" "}
             <Link
               href="/auth/login"
-              className="inline-flex rounded-full bg-blue-100 px-4 py-1.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-200 sm:px-5 sm:py-2"
+              className="inline-flex rounded-full bg-purple-100 px-4 py-1.5 text-sm font-semibold text-purple-700 transition hover:bg-purple-200 sm:px-5 sm:py-2"
             >
               Login
             </Link>
@@ -291,39 +291,39 @@ export default function RegisterPage() {
                   </div>
                 </label>
                 <div className="mt-3 space-y-1">
-                  <div className="grid grid-cols-4 gap-1">
-                    <span
-                      className={`h-1.5 rounded-full ${
-                        password.length >= 1 ? "bg-blue-500" : "bg-slate-200"
-                      }`}
-                    />
-                    <span
-                      className={`h-1.5 rounded-full ${
-                        password.length >= 3 ? "bg-blue-500" : "bg-slate-200"
-                      }`}
-                    />
-                    <span
-                      className={`h-1.5 rounded-full ${
-                        password.length >= 6 ? "bg-blue-400" : "bg-slate-200"
-                      }`}
-                    />
-                    <span
-                      className={`h-1.5 rounded-full ${
-                        password.length >= 10 ? "bg-blue-300" : "bg-slate-200"
-                      }`}
-                    />
-                  </div>
-                  {(submitted || password.length > 0) && (
-                    <p
-                      className={`text-xs font-medium sm:text-sm ${
-                        hasMinimumLength ? "text-blue-600" : "text-rose-600"
-                      }`}
-                    >
-                      {hasMinimumLength
-                        ? "Senha válida (mínimo de 6 caracteres)"
-                        : "A senha deve ter no mínimo 6 caracteres"}
-                    </p>
-                  )}
+                <div className="grid grid-cols-4 gap-1">
+                  <span
+                    className={`h-1.5 rounded-full ${
+                      password.length >= 1 ? "bg-purple-500" : "bg-slate-200"
+                    }`}
+                  />
+                  <span
+                    className={`h-1.5 rounded-full ${
+                      password.length >= 3 ? "bg-purple-500" : "bg-slate-200"
+                    }`}
+                  />
+                  <span
+                    className={`h-1.5 rounded-full ${
+                      password.length >= 6 ? "bg-purple-400" : "bg-slate-200"
+                    }`}
+                  />
+                  <span
+                    className={`h-1.5 rounded-full ${
+                      password.length >= 10 ? "bg-purple-300" : "bg-slate-200"
+                    }`}
+                  />
+                </div>
+                {(submitted || password.length > 0) && (
+                  <p
+                    className={`text-xs font-medium sm:text-sm ${
+                      hasMinimumLength ? "text-purple-600" : "text-rose-600"
+                    }`}
+                  >
+                    {hasMinimumLength
+                      ? "Senha válida (mínimo de 6 caracteres)"
+                      : "A senha deve ter no mínimo 6 caracteres"}
+                  </p>
+                )}
                 </div>
               </div>
 
@@ -376,15 +376,15 @@ export default function RegisterPage() {
                 checked={acceptedTerms}
                 onChange={(event) => setAcceptedTerms(event.target.checked)}
                 required
-                className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
               />
               <span>
                 Concordo com os{" "}
-                <Link href="#" className="font-semibold text-blue-600 hover:underline">
+                <Link href="#" className="font-semibold text-purple-600 hover:underline">
                   Termos de Uso
                 </Link>{" "}
                 e{" "}
-                <Link href="#" className="font-semibold text-blue-600 hover:underline">
+                <Link href="#" className="font-semibold text-purple-600 hover:underline">
                   Política de Privacidade
                 </Link>{" "}
                 da plataforma.
@@ -393,7 +393,7 @@ export default function RegisterPage() {
 
             <button
               type="submit"
-              className="group mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-full bg-blue-500 text-base font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400 sm:h-12 sm:text-lg"
+              className="group mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-full bg-purple-500 text-base font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-slate-400 sm:h-12 sm:text-lg"
               disabled={!canSubmit || isLoading}
             >
               {isLoading ? "Criando conta..." : "Criar conta"}
@@ -409,7 +409,7 @@ export default function RegisterPage() {
 
           <div className="mt-6 border-t border-slate-200 pt-5 text-center text-sm text-slate-500 sm:mt-8 sm:pt-6 sm:text-base">
             Entrar em contato?{" "}
-            <Link href="#" className="font-semibold text-blue-600 hover:underline">
+            <Link href="#" className="font-semibold text-purple-600 hover:underline">
               Clique aqui
             </Link>
           </div>

@@ -103,7 +103,7 @@ export function AppointmentHoverDetails({
 
   const panel = (
     <div
-      className="pointer-events-none fixed max-w-[calc(100vw-1rem)] rounded-xl border border-blue-200 bg-gradient-to-br from-white to-blue-50 p-3 text-left shadow-xl shadow-blue-200/60 transition-all duration-200 ease-out"
+      className="pointer-events-none fixed max-w-[calc(100vw-1rem)] rounded-xl border border-purple-200 bg-gradient-to-br from-white to-purple-50 p-3 text-left shadow-xl shadow-purple-200/60 transition-all duration-200 ease-out"
       style={{
         width: POPOVER_W,
         top: coords.top,
@@ -120,31 +120,31 @@ export function AppointmentHoverDetails({
         zIndex: Z_POPOVER,
       }}
     >
-      <div className="mb-2 min-w-0 space-y-1 border-b border-blue-100 pb-2">
+      <div className="mb-2 min-w-0 space-y-1 border-b border-purple-100 pb-2">
         <p
-          className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-blue-900"
+          className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-purple-900"
           title={patient}
         >
-          <UserIcon className="h-3.5 w-3.5 shrink-0 text-blue-600" />
+          <UserIcon className="h-3.5 w-3.5 shrink-0 text-purple-600" />
           <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{patient}</span>
         </p>
         <p
-          className="flex min-w-0 items-center gap-1.5 text-xs text-blue-700"
+          className="flex min-w-0 items-center gap-1.5 text-xs text-purple-700"
           title={procedure}
         >
-          <ChartNoAxesColumn className="h-3.5 w-3.5 shrink-0 text-blue-500" />
+          <ChartNoAxesColumn className="h-3.5 w-3.5 shrink-0 text-purple-500" />
           <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{procedure}</span>
         </p>
       </div>
       <div className="space-y-1.5">
         {professional ? (
           <p className="flex items-center gap-1.5 text-xs text-slate-600">
-            <UserSearch className="h-3.5 w-3.5 text-blue-500" />
+            <UserSearch className="h-3.5 w-3.5 text-purple-500" />
             <span>Profissional: {professional}</span>
           </p>
         ) : null}
         <p className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
-          <Clock3 className="h-3.5 w-3.5 text-blue-500" />
+          <Clock3 className="h-3.5 w-3.5 text-purple-500" />
           <span>
             {startTime} - {endTime}
           </span>
@@ -155,13 +155,13 @@ export function AppointmentHoverDetails({
         </p>
         {procedureValue ? (
           <p className="flex items-center gap-1.5 text-xs text-slate-600">
-            <CoinsIcon className="h-3.5 w-3.5 text-blue-500" />
+            <CoinsIcon className="h-3.5 w-3.5 text-purple-500" />
             <span>Valor: {procedureValue}</span>
           </p>
         ) : null}
         {hasNotes ? (
           <p className="flex items-start gap-1.5 text-xs text-slate-600">
-            <InfoIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-500" />
+            <InfoIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-purple-500" />
             <span className="line-clamp-2">Observacoes: {notes?.trim()}</span>
           </p>
         ) : null}

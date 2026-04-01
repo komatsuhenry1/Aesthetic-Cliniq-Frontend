@@ -17,6 +17,8 @@ export type Appointment = {
   professional: string;
   status: AppointmentStatus;
   badge?: string;
+  paymentMethod?: string;
+  installments?: string;
 };
 
 export type ViewMode = "day" | "week" | "month";
@@ -33,6 +35,7 @@ export type WeeklyEvent = {
   status: AppointmentStatus;
   appointmentId?: string;
   canEditStatus?: boolean;
+  paymentMethod?: string;
 };
 
 export type WeeklyEventLayout = WeeklyEvent & {
@@ -52,6 +55,8 @@ export type AppointmentDetails = {
   professional: string;
   status: AppointmentStatus;
   canEditStatus: boolean;
+  paymentMethod?: string;
+  installments?: string;
 };
 
 export type NewAppointmentForm = {
@@ -64,6 +69,8 @@ export type NewAppointmentForm = {
   professional: string;
   status: AppointmentStatus;
   notes: string;
+  paymentMethod: string;
+  installments?: string;
 };
 
 export type EditAppointmentForm = {
@@ -75,6 +82,8 @@ export type EditAppointmentForm = {
   procedureValue: string;
   notes: string;
   professional: string;
+  paymentMethod: string;
+  installments?: string;
 };
 
 export type DetailsTab = "status" | "estoque";

@@ -180,7 +180,7 @@ export function weekEventStyles(status: WeeklyEvent["status"]) {
 
 export function viewModeButtonStyles(currentMode: ViewMode, buttonMode: ViewMode) {
   if (currentMode === buttonMode) {
-    return "rounded-md bg-white px-3 py-1.5 text-sm font-semibold text-blue-600 shadow-sm";
+    return "rounded-md bg-white px-3 py-1.5 text-sm font-semibold text-purple-600 shadow-sm";
   }
 
   return "rounded-md px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700";
@@ -236,10 +236,10 @@ export function statusDotColor(status: AppointmentStatus) {
 
 export function statusOptionButtonStyles(status: AppointmentStatus, currentStatus: AppointmentStatus) {
   if (status === currentStatus) {
-    return "border-transparent bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200";
+    return "border-transparent bg-purple-50 text-purple-700 ring-1 ring-purple-200";
   }
 
-  return "border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:bg-indigo-50/50 hover:text-indigo-700";
+  return "border-slate-200 bg-white text-slate-600 hover:border-purple-200 hover:bg-purple-50/50 hover:text-purple-700";
 }
 
 export function createAppointmentId() {
@@ -266,4 +266,28 @@ export function formatCurrencyInput(value: string) {
     style: "currency",
     currency: "BRL",
   });
+}
+
+export function paymentMethodLabel(method?: string) {
+  if (!method) {
+    return "Não informado";
+  }
+
+  if (method === "dinheiro") {
+    return "Dinheiro";
+  }
+
+  if (method === "cartao_credito") {
+    return "Cartão de Crédito";
+  }
+
+  if (method === "cartao_debito") {
+    return "Cartão de Débito";
+  }
+
+  if (method === "pix") {
+    return "PIX";
+  }
+
+  return method || "Não informado";
 }

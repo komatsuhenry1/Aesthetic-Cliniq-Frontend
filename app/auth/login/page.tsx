@@ -11,7 +11,7 @@ function BrandIcon() {
     <svg
       aria-hidden="true"
       viewBox="0 0 24 24"
-      className="h-5 w-5 text-blue-500"
+      className="h-5 w-5 text-purple-500"
       fill="currentColor"
     >
       <path d="M10.6 2.4a.75.75 0 0 1 1.06 0l1.94 1.94a.75.75 0 0 1-.53 1.28h-3.88a.75.75 0 0 1-.53-1.28zM4.4 8.6a.75.75 0 0 1 1.06 0l1.94 1.94a.75.75 0 0 1-.53 1.28H2.99a.75.75 0 0 1-.53-1.28zM16.6 8.6a.75.75 0 0 1 1.06 0l1.94 1.94a.75.75 0 0 1-.53 1.28h-3.88a.75.75 0 0 1-.53-1.28zM10.6 14.6a.75.75 0 0 1 1.06 0l1.94 1.94a.75.75 0 0 1-.53 1.28h-3.88a.75.75 0 0 1-.53-1.28z" />
@@ -169,7 +169,7 @@ export default function LoginPage() {
             Ainda não tem conta?{" "}
             <Link
               href="/auth/register"
-              className="inline-flex rounded-full bg-blue-100 px-4 py-1.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-200 sm:px-5 sm:py-2"
+              className="inline-flex rounded-full bg-purple-100 px-4 py-1.5 text-sm font-semibold text-purple-700 transition hover:bg-purple-200 sm:px-5 sm:py-2"
             >
               Criar conta
             </Link>
@@ -246,13 +246,13 @@ export default function LoginPage() {
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(event) => setRememberMe(event.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  className="h-4 w-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
                 />
                 Lembrar de mim
               </label>
               <Link
                 href="#"
-                className="text-xs font-medium text-blue-600 hover:underline sm:text-sm"
+                className="text-xs font-medium text-purple-600 hover:underline sm:text-sm"
               >
                 Esqueci minha senha
               </Link>
@@ -260,7 +260,7 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              className="group mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-full bg-blue-500 text-base font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400 sm:h-12 sm:text-lg"
+              className="group mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-full bg-purple-500 text-base font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-slate-400 sm:h-12 sm:text-lg"
               disabled={!canSubmit || isLoading}
             >
               {isLoading ? "Entrando..." : "Entrar"}
@@ -273,7 +273,7 @@ export default function LoginPage() {
 
           <div className="mt-6 border-t border-slate-200 pt-5 text-center text-sm text-slate-500 sm:mt-8 sm:pt-6 sm:text-base">
             Não tem acesso ainda?{" "}
-            <Link href="/auth/register" className="font-semibold text-blue-600 hover:underline">
+            <Link href="/auth/register" className="font-semibold text-purple-600 hover:underline">
               Criar uma conta
             </Link>
           </div>

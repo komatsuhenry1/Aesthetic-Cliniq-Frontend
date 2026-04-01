@@ -10,9 +10,9 @@ const avatarColorOptions = [
   "bg-emerald-100 text-emerald-700",
   "bg-amber-100 text-amber-700",
   "bg-cyan-100 text-cyan-700",
-  "bg-violet-100 text-violet-700",
+  "bg-purple-100 text-purple-700",
   "bg-rose-100 text-rose-700",
-  "bg-blue-100 text-blue-700",
+  "bg-purple-100 text-purple-700",
 ];
 
 function getAvatarClassesByPatient(patient: string) {
@@ -151,12 +151,12 @@ export default function DashboardPage() {
         <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white">
           <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
             <div className="flex items-center gap-2">
-              <CalendarIcon className="h-5 w-5 text-blue-500" />
+              <CalendarIcon className="h-5 w-5 text-purple-500" />
               <h2 className="text-lg font-semibold text-slate-800">Próximos Agendamentos</h2>
             </div>
             <Link
               href="/agenda"
-              className="group inline-flex items-center gap-1 text-xs font-semibold text-blue-500 transition hover:text-blue-800"
+              className="group inline-flex items-center gap-1 text-xs font-semibold text-purple-500 transition hover:text-purple-800"
             >
               <span>Ver todos</span>
               <ArrowRightIcon className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
@@ -194,7 +194,7 @@ export default function DashboardPage() {
                   </div>
                   <Link
                     href="/agenda"
-                    className="group flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-500 transition hover:bg-blue-100 hover:text-blue-700"
+                    className="group flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-50 text-purple-500 transition hover:bg-purple-100 hover:text-purple-700"
                     aria-label={`Ir para agenda de ${appointment.patient}`}
                   >
                     <ArrowRightIcon className="h-6 w-6 transition-transform duration-200 group-hover:translate-x-1" />
@@ -222,7 +222,7 @@ export default function DashboardPage() {
                   <div
                     key={date.toISOString()}
                     className={`mx-auto flex h-9 w-9 items-center justify-center rounded-lg text-lg ${
-                      isSelected ? "bg-blue-500 font-semibold text-white" : isCurrentMonth ? "text-slate-800" : "text-slate-300"
+                      isSelected ? "bg-purple-500 font-semibold text-white" : isCurrentMonth ? "text-slate-800" : "text-slate-300"
                     }`}
                   >
                     {date.getDate()}

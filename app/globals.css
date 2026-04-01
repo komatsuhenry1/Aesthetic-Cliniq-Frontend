@@ -72,3 +72,225 @@ body {
   left: calc(50% - 20px / 2 + 7px);
   top: calc(50% - 20px / 2);
 }
+
+/* Drawer profissionais: painel lateral */
+@keyframes prof-drawer-enter {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes prof-drawer-leave {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes prof-drawer-backdrop-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes prof-drawer-backdrop-leave {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.prof-drawer-aside-enter {
+  animation: prof-drawer-enter 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.prof-drawer-aside-leave {
+  animation: prof-drawer-leave 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.prof-drawer-backdrop-enter {
+  animation: prof-drawer-backdrop-enter 0.3s ease-out both;
+}
+.prof-drawer-backdrop-leave {
+  animation: prof-drawer-backdrop-leave 0.25s ease-out both;
+}
+
+/* Modal animations */
+@keyframes modal-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+@keyframes modal-leave {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+}
+.modal-enter {
+  animation: modal-enter 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.modal-leave {
+  animation: modal-leave 0.25s ease-out both;
+}
+
+/* Botão excluir profissional — fundo transparente; vermelho só no hover */
+.prof-delete-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: transparent;
+  background-color: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  border: none;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none;
+  cursor: pointer;
+  color: inherit;
+  transition:
+    width 0.3s ease,
+    border-radius 0.3s ease,
+    background-color 0.3s ease;
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.prof-delete-btn .prof-delete-icon {
+  width: 14px;
+  height: 14px;
+  transition: opacity 0.25s ease;
+}
+
+.prof-delete-btn:hover {
+  width: 92px;
+  border-radius: 50px;
+  background-color: rgb(255, 69, 69);
+}
+
+.prof-delete-btn:hover .prof-delete-icon {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.prof-delete-btn::before {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  content: "Excluir";
+  color: white;
+  font-size: 2px;
+  line-height: 1;
+  opacity: 0;
+  transition:
+    font-size 0.3s ease,
+    opacity 0.3s ease;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.prof-delete-btn:hover::before {
+  font-size: 11px;
+  opacity: 1;
+}
+
+/* Botão editar — mesma animação do excluir (largura + pill + texto); azul */
+button.prof-edit-btn {
+  box-sizing: border-box;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  margin: 0;
+  border-radius: 50%;
+  background: transparent !important;
+  background-color: transparent !important;
+  -webkit-appearance: none;
+  appearance: none;
+  border: none !important;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none !important;
+  cursor: pointer;
+  color: inherit;
+  transition:
+    width 0.3s ease,
+    min-width 0.3s ease,
+    border-radius 0.3s ease,
+    background-color 0.3s ease;
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+button.prof-edit-btn .prof-edit-icon,
+button.prof-edit-btn svg.prof-edit-icon {
+  width: 14px !important;
+  height: 14px !important;
+  min-width: 14px;
+  transition: opacity 0.25s ease;
+  position: relative;
+  z-index: 1;
+}
+
+button.prof-edit-btn:hover,
+button.prof-edit-btn:focus-visible:hover {
+  width: 92px !important;
+  min-width: 92px !important;
+  border-radius: 50px !important;
+  background-color: rgb(147, 51, 234) !important;
+  background: rgb(147, 51, 234) !important;
+}
+
+button.prof-edit-btn:hover .prof-edit-icon,
+button.prof-edit-btn:hover svg.prof-edit-icon {
+  opacity: 0 !important;
+  pointer-events: none;
+}
+
+button.prof-edit-btn::before {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  content: "Editar";
+  color: #fff !important;
+  font-size: 2px;
+  line-height: 1;
+  opacity: 0;
+  transition:
+    font-size 0.3s ease,
+    opacity 0.3s ease;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+button.prof-edit-btn:hover::before {
+  z-index: 2;
+  font-size: 11px;
+  opacity: 1;
+}
