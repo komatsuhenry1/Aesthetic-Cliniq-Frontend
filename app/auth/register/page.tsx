@@ -157,7 +157,7 @@ export default function RegisterPage() {
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-4 py-3 sm:h-16 sm:flex-row sm:gap-4 sm:px-6 sm:py-0">
           <Link href="/" className="flex items-center gap-2 font-semibold">
             <BrandIcon />
-            <span className="text-xl tracking-tight sm:text-2xl">ClinicPro</span>
+            <span className="text-xl tracking-tight sm:text-2xl">Aesthetic Cliniq</span>
           </Link>
           <p className="flex flex-wrap items-center justify-center gap-2 text-xs text-slate-500 sm:justify-end sm:text-sm">
             Já tem uma conta?{" "}
@@ -417,7 +417,7 @@ export default function RegisterPage() {
       </section>
 
       <footer className="px-4 pb-4 text-center text-[11px] leading-relaxed tracking-[0.08em] text-slate-400 sm:text-sm sm:tracking-[0.18em]">
-        © 2026 ClinicPro - Software de gestão de clínicas
+        © 2026 Aesthetic Cliniq - Software de gestão de clínicas
       </footer>
     </main>
   );

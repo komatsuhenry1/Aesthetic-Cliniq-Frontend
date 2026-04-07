@@ -9,8 +9,8 @@ const manrope = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "Clinic Pro",
-  description: "Clinic Pro",
+  title: "Aesthetic Cliniq",
+  description: "Aesthetic Cliniq",
 };
 
 export default function RootLayout({

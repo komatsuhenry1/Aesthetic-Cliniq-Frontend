@@ -28,7 +28,7 @@ export function AuthenticatedShell({ children }: AuthenticatedShellProps) {
             <Menu className="h-5 w-5" strokeWidth={2} />
           </button>
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Clinic Pro</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Aesthetic Cliniq</p>
             <p className="truncate text-sm font-semibold text-slate-800">Menu</p>
           </div>
         </header>
