@@ -219,3 +219,24 @@ export async function getNextFiveAppointments(): Promise<AgendaAppointment[]> {
 
   return response.data.map(mapApiItemToAgendaAppointment);
 }
+
+export type CreateAppointmentPayload = {
+  client_id: string;
+  professional_id: string;
+  patient_name: string;
+  professional_name: string;
+  procedure: string;
+  price: number;
+  start_time: string;
+  end_time: string;
+  payment_method: string;
+  notes?: string;
+};
+
+export async function createAppointment(payload: CreateAppointmentPayload): Promise<AppointmentApiResponse> {
+  return await apiRequestJson<AppointmentApiResponse>(`/api/v1/appointment/`, {
+    method: "POST",
+    headers: getAuthHeader(),
+    body: JSON.stringify(payload),
+  });
+}

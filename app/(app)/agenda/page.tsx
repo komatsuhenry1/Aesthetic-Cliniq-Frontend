@@ -12,7 +12,6 @@ import {
   Clock4,
   Lock,
   FileText,
-  Activity,
   UserSearch,
   UserIcon,
   UserPlus,
@@ -31,6 +30,7 @@ import {
   getAppointmentsByDate,
   getAppointmentsByWeek,
   getMonthlyAppointmentCount,
+  createAppointment,
 } from "@/services/api/appointment";
 import type { MonthlyCountItem } from "@/services/api/appointment";
 import { getProfessionalNames } from "@/services/api/professional";
@@ -706,7 +706,7 @@ export default function AgendaPage() {
     void loadCreateProfessionalNames();
   }
 
-  function handleCreateAppointment() {
+  async function handleCreateAppointment() {
     if (!newAppointment.date || !newAppointment.startTime || !newAppointment.endTime) {
       setCreateAppointmentError("Preencha data, horário inicial e horário final.");
       return;
@@ -774,27 +774,66 @@ export default function AgendaPage() {
       return;
     }
 
-    setAppointmentList((currentAppointments) => [
-      ...currentAppointments,
-      {
-        id: createAppointmentId(),
-        date: newAppointment.date,
-        startTime: newAppointment.startTime,
-        endTime: newAppointment.endTime,
-        patient: isBlockedSlot ? "Horário bloqueado" : newAppointment.patient.trim(),
+    try {
+      // Usando os UUIDs fornecidos conforme solicitado. No futuro, você deve mapear isso pro ID real selecionado nos selects.
+      const payload = {
+        client_id: "019d0b8a-0a93-7c73-87d1-b0946f7f59b3", 
+        professional_id: "440438e3-41d7-4f75-a14d-28fdf27a6617",
+        patient_name: isBlockedSlot ? "Horário bloqueado" : newAppointment.patient.trim(),
+        professional_name: newAppointment.professional.trim(),
         procedure: isBlockedSlot ? "Indisponível para agendamento" : newAppointment.procedure.trim(),
-        procedureValue: isBlockedSlot ? "" : newAppointment.procedureValue,
-        notes: newAppointment.notes.trim(),
-        professional: newAppointment.professional.trim(),
-        status: newAppointment.status,
-        paymentMethod: isBlockedSlot ? "" : newAppointment.paymentMethod.trim(),
-        installments:
-          !isBlockedSlot && newAppointment.paymentMethod === "cartao_credito"
-            ? newAppointment.installments?.trim()
-            : "",
-      },
-    ]);
-    setIsCreateDrawerClosing(true);
+        price: isBlockedSlot ? 0 : parseCurrencyToCents(newAppointment.procedureValue) / 100,
+        start_time: `${newAppointment.date}T${newAppointment.startTime}:00Z`,
+        end_time: `${newAppointment.date}T${newAppointment.endTime}:00Z`,
+        payment_method: isBlockedSlot ? "" : (newAppointment.paymentMethod.trim().toUpperCase() || 'DINHEIRO'),
+        notes: newAppointment.notes.trim()
+      };
+
+      console.log("Enviando payload para o backend:", JSON.stringify(payload, null, 2));
+
+      await createAppointment(payload);
+
+      // Mantém a atualização do estado local para que apareça na interface instantaneamente!
+      setAppointmentList((currentAppointments) => [
+        ...currentAppointments,
+        {
+          id: createAppointmentId(),
+          date: newAppointment.date,
+          startTime: newAppointment.startTime,
+          endTime: newAppointment.endTime,
+          patient: isBlockedSlot ? "Horário bloqueado" : newAppointment.patient.trim(),
+          procedure: isBlockedSlot ? "Indisponível para agendamento" : newAppointment.procedure.trim(),
+          procedureValue: isBlockedSlot ? "" : newAppointment.procedureValue,
+          notes: newAppointment.notes.trim(),
+          professional: newAppointment.professional.trim(),
+          status: newAppointment.status,
+          paymentMethod: isBlockedSlot ? "" : newAppointment.paymentMethod.trim(),
+          installments:
+            !isBlockedSlot && newAppointment.paymentMethod === "cartao_credito"
+              ? newAppointment.installments?.trim()
+              : "",
+        },
+      ]);
+      setIsCreateDrawerClosing(true);
+      
+      setStatusNotification({
+        title: "Agendamento Salvo",
+        description: isBlockedSlot 
+          ? "O bloqueio de horário foi registrado com sucesso."
+          : `O agendamento para ${newAppointment.patient.trim()} foi criado com sucesso!`
+      });
+    } catch (error: any) {
+      console.error("Erro ao criar o agendamento no backend:", error);
+      console.error("Detalhes do erro:", error?.details);
+      
+      let errorMsg = "Ocorreu um erro ao criar o agendamento. Tente novamente.";
+      if (error?.details && typeof error.details === "object" && typeof error.details.error === "string") {
+        errorMsg += ` Detalhes: ${error.details.error}`;
+      } else if (error?.details && typeof error.details === "string") {
+       errorMsg += ` Detalhes: ${error.details}`;
+      }
+      setCreateAppointmentError(errorMsg);
+    }
   }
 
   function goToClientAppointment(apt: Appointment) {
