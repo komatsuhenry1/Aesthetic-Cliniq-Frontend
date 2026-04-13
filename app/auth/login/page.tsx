@@ -143,7 +143,22 @@ export default function LoginPage() {
         localStorage.removeItem("rememberLoginEmail");
       }
 
-      router.push("/dashboard");
+      const role = response.data?.user?.role;
+      const userName = response.data?.user?.name;
+      
+      // Salvar a role e name
+      if (role) {
+        localStorage.setItem("userRole", role);
+      }
+      if (userName) {
+        localStorage.setItem("userName", userName);
+      }
+
+      if (role === "USER") {
+        router.push("/home"); //TODO: REFACTOR ROUTER.OUSH HERE!!
+      } else {
+        router.push("/dashboard");
+      }
     } catch (error) {
       if (error instanceof ApiRequestError) {
         setAuthError(error.message);

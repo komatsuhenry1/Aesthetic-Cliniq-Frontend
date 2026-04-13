@@ -89,6 +89,9 @@ export default function AgendaPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [currentTime, setCurrentTime] = useState(() => new Date());
+
+  const [userRole, setUserRole] = useState<string>("");
+  const [userName, setUserName] = useState<string>("");
   const [appointmentList, setAppointmentList] = useState<Appointment[]>([]);
   const [monthlyCounts, setMonthlyCounts] = useState<MonthlyCountItem[]>([]);
   const [selectedAppointmentDetails, setSelectedAppointmentDetails] = useState<AppointmentDetails | null>(null);
@@ -724,7 +727,9 @@ export default function AgendaPage() {
 
     const isBlockedSlot = newAppointment.status === "bloqueado";
 
-    if (!isBlockedSlot && (!newAppointment.patient.trim() || !newAppointment.procedure.trim())) {
+    const effectivePatient = userRole === "USER" ? userName : newAppointment.patient.trim();
+
+    if (!isBlockedSlot && (!effectivePatient || !newAppointment.procedure.trim())) {
       setCreateAppointmentError("Preencha paciente e procedimento.");
       return;
     }
@@ -779,7 +784,7 @@ export default function AgendaPage() {
       const payload = {
         client_id: "019d0b8a-0a93-7c73-87d1-b0946f7f59b3", 
         professional_id: "440438e3-41d7-4f75-a14d-28fdf27a6617",
-        patient_name: isBlockedSlot ? "Horário bloqueado" : newAppointment.patient.trim(),
+        patient_name: isBlockedSlot ? "Horário bloqueado" : effectivePatient,
         professional_name: newAppointment.professional.trim(),
         procedure: isBlockedSlot ? "Indisponível para agendamento" : newAppointment.procedure.trim(),
         price: isBlockedSlot ? 0 : parseCurrencyToCents(newAppointment.procedureValue) / 100,
@@ -801,7 +806,7 @@ export default function AgendaPage() {
           date: newAppointment.date,
           startTime: newAppointment.startTime,
           endTime: newAppointment.endTime,
-          patient: isBlockedSlot ? "Horário bloqueado" : newAppointment.patient.trim(),
+          patient: isBlockedSlot ? "Horário bloqueado" : effectivePatient,
           procedure: isBlockedSlot ? "Indisponível para agendamento" : newAppointment.procedure.trim(),
           procedureValue: isBlockedSlot ? "" : newAppointment.procedureValue,
           notes: newAppointment.notes.trim(),
@@ -820,7 +825,7 @@ export default function AgendaPage() {
         title: "Agendamento Salvo",
         description: isBlockedSlot 
           ? "O bloqueio de horário foi registrado com sucesso."
-          : `O agendamento para ${newAppointment.patient.trim()} foi criado com sucesso!`
+          : `O agendamento para ${effectivePatient} foi criado com sucesso!`
       });
     } catch (error: any) {
       console.error("Erro ao criar o agendamento no backend:", error);
@@ -1102,6 +1107,10 @@ export default function AgendaPage() {
           : `Status alterado para ${updatedStatusLabel} para ${patientName}.`,
     });
   }
+  useEffect(() => {
+    setUserRole(localStorage.getItem("userRole") || "");
+    setUserName(localStorage.getItem("userName") || "");
+  }, []);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -2861,9 +2870,10 @@ export default function AgendaPage() {
             </div>
 
             <div className="flex-1 space-y-6 overflow-y-auto bg-slate-50 px-5 py-5">
-              <label className="block text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
-                Cliente
-                <div
+              {userRole !== "USER" && (
+                <label className="block text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
+                  Cliente
+                  <div
                   className={`mt-2 flex h-10 items-center gap-3 rounded-lg border px-3 sm:h-11 ${
                     isBlockedSlot
                       ? "border-slate-200 bg-slate-100"
@@ -2901,8 +2911,9 @@ export default function AgendaPage() {
                       + Adicionar cliente
                     </button>
                   </div>
-                ) : null}
-              </label>
+                  ) : null}
+                </label>
+              )}
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
