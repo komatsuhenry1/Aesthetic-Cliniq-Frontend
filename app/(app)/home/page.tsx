@@ -25,15 +25,6 @@ export default function PatientHomePage() {
         <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8 relative z-10">
           <div className="flex justify-between items-center mb-8">
             <h1 className="text-2xl font-black tracking-tighter">Aesthetic Cliniq</h1>
-            <button
-              onClick={() => {
-                localStorage.clear();
-                router.push("/auth/login");
-              }}
-              className="text-sm font-medium text-purple-200 hover:text-white transition-colors"
-            >
-              Sair
-            </button>
           </div>
           <div className="max-w-2xl">
             <h2 className="text-4xl font-bold tracking-tight mb-3">

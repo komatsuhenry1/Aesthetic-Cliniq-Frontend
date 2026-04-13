@@ -75,6 +75,7 @@ export function AppSidebar({ mobileOpen = false, onMobileClose }: AppSidebarProp
   const pathname = usePathname();
   const router = useRouter();
   const [clinicName, setClinicName] = useState(DEFAULT_CLINIC_NAME);
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
   useEffect(() => {
     setClinicName(getStoredClinicName());
@@ -105,7 +106,7 @@ export function AppSidebar({ mobileOpen = false, onMobileClose }: AppSidebarProp
   }, [mobileOpen]);
 
   const handleLogout = () => {
-    localStorage.removeItem("clinicName");
+    localStorage.clear();
     setClinicName(DEFAULT_CLINIC_NAME);
     onMobileClose?.();
     router.replace("/auth/login");
@@ -155,7 +156,7 @@ export function AppSidebar({ mobileOpen = false, onMobileClose }: AppSidebarProp
       <div className="border-t border-slate-100 p-4">
         <button
           type="button"
-          onClick={handleLogout}
+          onClick={() => setIsLogoutModalOpen(true)}
           className="group relative flex w-full items-center gap-3 overflow-hidden rounded-xl px-4 py-3 text-sm font-medium text-slate-500 transition-all duration-300 hover:text-red-700"
         >
           <span className="absolute inset-0 scale-95 rounded-xl bg-red-50 opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
@@ -222,6 +223,35 @@ export function AppSidebar({ mobileOpen = false, onMobileClose }: AppSidebarProp
         </div>
         <NavLinks />
       </aside>
+
+      {/* Modal de Logout Premium na Sidebar */}
+      {isLogoutModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm transition-opacity">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 sm:p-8 transform transition-all duration-200">
+            <h3 className="text-xl font-bold text-slate-900 mb-2">Deseja realmente sair?</h3>
+            <p className="text-slate-500 mb-8 text-sm leading-relaxed">
+              Você precisará fazer login novamente para acessar o sistema.
+            </p>
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 sm:gap-4">
+              <button 
+                onClick={() => setIsLogoutModalOpen(false)}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={() => {
+                  setIsLogoutModalOpen(false);
+                  handleLogout();
+                }}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-semibold bg-rose-500 text-white shadow hover:bg-rose-600 transition-all"
+              >
+                Sair agora
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
